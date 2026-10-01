@@ -37,3 +37,11 @@ not represent durable-store test coverage.
 Database tests are listed in [the PostgreSQL guide](postgres.md). They test
 transactional admission and reconnect persistence, not worker or database
 crash recovery. No performance measurement is claimed.
+
+The first candidate's [PostgreSQL job](https://github.com/w4llisz/small-chain-platform/actions/runs/36848797587/job/110325282403)
+passed all four integration test groups (including their subcases) and both
+migration-command executions. Its container build exposed a missing `go.sum`
+entry in the existing `.dockerignore` allowlist; the follow-up build fix includes
+that file in the Docker context. Main promotion waits for the fixed candidate's
+full CI result. Local fuzzing also passed (10-second budget, 434,357 executions);
+this is input-validation evidence, not throughput.
