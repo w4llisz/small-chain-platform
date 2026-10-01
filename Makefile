@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: run build fmt check-fmt vet test verify smoke fuzz
+.PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -19,3 +19,9 @@ smoke: build
 	python3 scripts/smoke.py
 fuzz:
 	$(GO) test ./internal/jobs -run='^$$' -fuzz=FuzzNormalize -fuzztime=10s -parallel=4
+
+migrate:
+	$(GO) run ./cmd/migrate
+test-integration:
+	@test -n "$$TEST_DATABASE_URL" || (echo "TEST_DATABASE_URL is required" >&2; exit 1)
+	$(GO) test -tags=integration -race -count=1 -timeout=90s -v ./internal/postgres

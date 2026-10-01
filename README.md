@@ -4,11 +4,11 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 foundation.** The API and worker pool run in one process with bounded in-memory storage. PostgreSQL durability, multiple worker processes, tracing, and a React console are planned milestones, not implemented features. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 runnable; M2.1 durable admission implemented separately.** The API and worker pool run in one process with bounded in-memory storage. A PostgreSQL store now provides migrations and atomic submit/get with database integration tests; it is not yet connected to HTTP or workers. Durable scheduling, multiple worker processes, tracing, and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
-Prerequisites: Go 1.27.x; `make` and Python 3 for full verification. The race detector requires a C compiler. Runtime code uses only the Go standard library, so there is no `go.sum` yet.
+Prerequisites: Go 1.27.x; `make` and Python 3 for full verification. The race detector requires a C compiler. The M1 server uses the Go standard library; the optional PostgreSQL store uses pgx, pinned in `go.mod`/`go.sum`.
 
 ```sh
 make verify       # formatting, vet, race tests, build, real-process smoke test
@@ -80,9 +80,11 @@ The mutex protects short state transitions and admission. Executors run outside 
 | --- | --- |
 | `cmd/small-chain/` | Configuration, HTTP server, signals and shutdown |
 | `internal/jobs/` | Job model, state machine, concurrency, retries and tests |
+| `internal/postgres/` | Embedded migrations, durable idempotent submit/get, real-DB tests (not wired to HTTP) |
+| `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
-| `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke and container build |
+| `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
 | `docs/roadmap.md` | Scope, milestones, acceptance criteria and interview evidence |
 | `docs/api.md` | Requests, responses, limits and error semantics |
@@ -100,6 +102,8 @@ docker run --rm -p 127.0.0.1:8080:8080 small-chain:local
 ```
 
 The binary defaults to loopback. The container listens on all container interfaces; publish it only on local loopback for this unauthenticated demo. No external credentials are needed.
+
+For the optional durable admission package, follow the [PostgreSQL setup and test guide](docs/postgres.md): `make migrate` and `make test-integration`. These commands do not switch the HTTP server to PostgreSQL.
 
 ## Limits and next milestones
 

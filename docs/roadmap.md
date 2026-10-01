@@ -8,8 +8,8 @@ Target investment: roughly 45–60 focused hours for M1–M4, adjusted by progre
 
 | Milestone | Scope / estimate | Acceptance criteria | Evidence |
 | --- | --- | --- | --- |
-| M1 — execution foundation (this change) | Go API, memory engine, bounded pool, retries, cancel, probes, metrics, tests/CI; 10–14 h | Concurrent same-key requests execute once; safe overload; immutable terminal results; signal drain/deadline cancellation | `make verify`, CI workflow, design decisions |
-| M2 — durable scheduling | PostgreSQL migrations, admission, leases, fenced completion, delayed retries, events/retention; 14–18 h | Jobs survive restart; two processes claim safely; killed worker recovers; stale completion rejected; retry budget survives crashes | DB integration tests, recovery script, query plans |
+| M1 — execution foundation (complete) | Go API, memory engine, bounded pool, retries, cancel, probes, metrics, tests/CI; 10–14 h | Concurrent same-key requests execute once; safe overload; immutable terminal results; signal drain/deadline cancellation | `make verify`, CI workflow, design decisions |
+| M2 — durable scheduling (in progress) | PostgreSQL migrations, admission, leases, fenced completion, delayed retries, events/retention; 14–18 h | Jobs survive restart; two processes claim safely; killed worker recovers; stale completion rejected; retry budget survives crashes | DB integration tests, recovery script, query plans |
 | M3 — operator console | React/TypeScript, paginated/filterable list, details/events, cancel; 8–12 h | Find failures and causes; cancel queued/running tasks; loading/error states; Playwright workflow passes | Recorded demo, screenshots, E2E tests |
 | M4 — operational evidence | Compose demo, histograms, OpenTelemetry, dashboard, reproducible load/failure tests; 12–16 h | One-command stack; trace admission/attempts; runbook matches failures; measurements include hardware/commit/workload | Benchmark report with raw data; incident write-up |
 
@@ -17,7 +17,9 @@ M1 is a runnable baseline, not yet the full flagship portfolio. **M2 is the next
 
 ## Next PRs
 
-1. `feat/postgres-admission`: schema/migrations, fingerprint uniqueness, transactional submit/get, PostgreSQL in CI. Keep API responses; specify idempotency retention.
+1. **M2.1 implemented:** `internal/postgres` schema/migrations, unique idempotency keys, normalized request fingerprints, transactional submit/get and PostgreSQL CI. Tests cover 32 concurrent submissions, conflicting payloads, uncommitted winners committing/rolling back, reconnect/replay and migration rollback/history checks. HTTP/workers still use M1 memory; no durable execution claim. See [setup and contract](postgres.md).
+   - **Next small task — M2.2:** migration for leases and attempt budget; transactional `Claim` with `FOR UPDATE SKIP LOCKED`. Acceptance: two independent pools claim distinct eligible jobs, delayed jobs remain unavailable, and each claim atomically increments attempts/version.
+   - **Later M2 steps:** heartbeat and fenced finish/cancel; crash recovery with persisted retry limits; HTTP integration with bounded admission and explicit retention/replay policy. Each step needs real-database tests before being marked complete.
 2. `feat/leased-workers`: claim, heartbeat, fenced finish/cancel, durable backoff, worker modes and two-process crash tests.
 3. `feat/operations-console`: list/filter API, React and Playwright. Optional manual retry creates a new job/key with explicit lineage; never mutate a terminal record.
 4. `feat/observability-and-evidence`: Compose with PostgreSQL/metrics/traces, dashboard, load generator and measured report.

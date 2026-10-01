@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -44,6 +46,16 @@ type Spec struct {
 	TimeoutMS         int    `json:"timeout_ms,omitempty"`
 }
 
+var validKey = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
+
+// ValidateKey keeps memory and durable admission on the same key contract.
+func ValidateKey(key string) error {
+	if !validKey.MatchString(key) {
+		return fmt.Errorf("%w: Idempotency-Key must be 1..128 ASCII letters, digits, '.', '_', ':' or '-'", ErrInvalid)
+	}
+	return nil
+}
+
 func (s Spec) Normalize() (Spec, error) {
 	if s.MaxAttempts == 0 {
 		s.MaxAttempts = 3
@@ -51,8 +63,8 @@ func (s Spec) Normalize() (Spec, error) {
 	if s.TimeoutMS == 0 {
 		s.TimeoutMS = 1000
 	}
-	if s.Kind != "demo.checksum" || len(s.Payload) > 4096 || s.DelayMS < 0 || s.DelayMS > 5000 || s.FailFirstAttempts < 0 || s.FailFirstAttempts > 5 || s.MaxAttempts < 1 || s.MaxAttempts > 5 || s.TimeoutMS < 1 || s.TimeoutMS > 30000 {
-		return Spec{}, fmt.Errorf("%w: kind=demo.checksum; payload<=4096 bytes; delay_ms=0..5000; fail_first_attempts=0..5; max_attempts=1..5; timeout_ms=1..30000", ErrInvalid)
+	if s.Kind != "demo.checksum" || !utf8.ValidString(s.Payload) || len(s.Payload) > 4096 || s.DelayMS < 0 || s.DelayMS > 5000 || s.FailFirstAttempts < 0 || s.FailFirstAttempts > 5 || s.MaxAttempts < 1 || s.MaxAttempts > 5 || s.TimeoutMS < 1 || s.TimeoutMS > 30000 {
+		return Spec{}, fmt.Errorf("%w: kind=demo.checksum; payload valid UTF-8 <=4096 bytes; delay_ms=0..5000; fail_first_attempts=0..5; max_attempts=1..5; timeout_ms=1..30000", ErrInvalid)
 	}
 	return s, nil
 }

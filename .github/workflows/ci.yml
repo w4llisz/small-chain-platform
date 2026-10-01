@@ -33,3 +33,41 @@ jobs:
         run: go tool cover -func=coverage.out
       - name: Build minimal non-root container
         run: docker build -t small-chain:ci .
+
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: small_chain
+          POSTGRES_PASSWORD: local_ci_only
+          POSTGRES_DB: small_chain_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U small_chain -d small_chain_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://small_chain:local_ci_only@localhost:5432/small_chain_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - name: Verify module checksums
+        run: go mod verify
+      - name: Test durable admission against PostgreSQL
+        run: make test-integration
+      - name: Exercise migration command twice
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          make migrate
+          make migrate

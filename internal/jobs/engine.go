@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	mathrand "math/rand/v2"
-	"regexp"
 	"sync"
 	"time"
 )
@@ -49,8 +48,6 @@ type Engine struct {
 	duration  float64
 }
 
-var validKey = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
-
 func New(cfg Config, execute Executor, logger *slog.Logger) (*Engine, error) {
 	if cfg.Workers < 1 || cfg.QueueCapacity < 1 || cfg.MaxJobs < 1 || cfg.RetryBase <= 0 || cfg.RetryMax < cfg.RetryBase {
 		return nil, errors.New("workers, queue capacity, max jobs and retry base must be positive; retry max must be >= base")
@@ -71,8 +68,8 @@ func New(cfg Config, execute Executor, logger *slog.Logger) (*Engine, error) {
 // Submit is atomic across idempotency lookup, capacity check and queue admission.
 // Rejected requests do not consume their key. Replays work even while draining.
 func (e *Engine) Submit(key string, spec Spec) (Job, bool, error) {
-	if !validKey.MatchString(key) {
-		return Job{}, false, fmt.Errorf("%w: Idempotency-Key must be 1..128 ASCII letters, digits, '.', '_', ':' or '-'", ErrInvalid)
+	if err := ValidateKey(key); err != nil {
+		return Job{}, false, err
 	}
 	spec, err := spec.Normalize()
 	if err != nil {

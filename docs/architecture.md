@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction yet: a durable scheduler needs transactional claim/finish operations, not a generic CRUD interface. M2 introduces that interface alongside its PostgreSQL implementation and integration tests.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction yet: a durable scheduler needs transactional claim/finish operations, not a generic CRUD interface. M2.1 adds a concrete PostgreSQL admission store and integration tests; the scheduler boundary will grow through transactional claim/finish operations rather than generic CRUD.
 
 ## State machine
 
@@ -46,7 +46,18 @@ An attempt gets a child deadline of the job context, canceled immediately after 
 | Retain terminal records up to cap | Stable idempotency during process lifetime | Finite demo lifetime; M2 adds documented retention/expiration |
 | Fixed trusted executor | Reproducible fault injection | Untrusted CI execution needs a separate isolation design |
 
-## M2: PostgreSQL as the durable queue (planned)
+## M2.1: durable admission (implemented, not wired to HTTP)
+
+`internal/postgres` persists normalized specs and SHA-256 fingerprints, with a
+unique key and explicit READ COMMITTED transactions. Replays use a separate
+statement after conflict to see a concurrent winner. `cmd/migrate` serializes
+migration execution with a transaction advisory lock and verifies checksummed
+history. The schema currently restricts state to queued and attempts to zero.
+Database connection/query/lock waits are bounded. Full protocol, retention
+limitations and real-database tests are in [the PostgreSQL guide](postgres.md).
+The M1 HTTP/worker process is unchanged; it cannot claim durable acceptance yet.
+
+## M2 remainder: PostgreSQL as the durable queue (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 

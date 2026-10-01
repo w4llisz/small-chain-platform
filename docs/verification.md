@@ -17,3 +17,23 @@ The command package is exercised by an external process smoke test, so its code 
 Tests focus on concurrent idempotency, worker/queue bounds, safe admission failure, retry classification/exhaustion, panic containment, late-success timeout rejection, cancellation in three nonterminal states, shutdown races, terminal immutability, retention limits, HTTP errors and a real HTTP lifecycle. No durability, multi-process recovery or performance claim has been tested in M1.
 
 Reproduce with `make verify` and `make fuzz`. CI uses four fuzz workers to bound resource use; execution count will vary by machine.
+
+## M2.1 admission increment — 2026-10-01
+
+Local: Linux amd64, Go 1.27.1. `make verify` passed formatting, vet,
+race tests, build and real-process smoke. The PostgreSQL integration suite also
+compiled with `go test -tags=integration -run='^$' ./internal/postgres`; that
+compile-only command is **not** evidence of database execution.
+
+This workspace cannot run a native PostgreSQL service. The `postgres` CI job
+therefore provisions a real PostgreSQL 16 service and runs
+`make test-integration` with `-race`, then invokes the migration command twice.
+Before main is advanced, the candidate is checked on a `feat/` branch; inspect
+the candidate commit's actual [CI checks](https://github.com/w4llisz/small-chain-platform/actions/workflows/ci.yml)
+for the integration result. The other CI job continues to check the M1 service,
+fuzzing and Docker build. Untagged coverage excludes integration tests and does
+not represent durable-store test coverage.
+
+Database tests are listed in [the PostgreSQL guide](postgres.md). They test
+transactional admission and reconnect persistence, not worker or database
+crash recovery. No performance measurement is claimed.
