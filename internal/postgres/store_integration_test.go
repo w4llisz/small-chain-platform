@@ -143,7 +143,7 @@ func TestLeaseMigrationBackfillsExistingJob(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spec, err := (jobs.Spec{Kind: "demo.checksum", Payload: "pre-lease", MaxAttempts: 5}).Normalize()
+	spec, err := (jobs.Spec{Kind: "demo.checksum", Payload: "pre-lease\x00", MaxAttempts: 5}).Normalize()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestUncommittedWinner(t *testing.T) {
 			encoded, _ := json.Marshal(spec)
 			fingerprint := sha256.Sum256(encoded)
 			winnerID := strings.Repeat("a", 32)
-			if _, err := tx.Exec(context.Background(), "INSERT INTO jobs (id,idempotency_key,request_fingerprint,spec) VALUES ($1,$2,$3,$4)", winnerID, "contended", fingerprint[:], string(encoded)); err != nil {
+			if _, err := tx.Exec(context.Background(), "INSERT INTO jobs (id,idempotency_key,request_fingerprint,spec,max_attempts) VALUES ($1,$2,$3,$4,$5)", winnerID, "contended", fingerprint[:], string(encoded), spec.MaxAttempts); err != nil {
 				t.Fatal(err)
 			}
 			type outcome struct {

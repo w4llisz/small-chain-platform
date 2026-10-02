@@ -8,7 +8,9 @@ ALTER TABLE jobs
     ADD COLUMN lease_expires_at timestamptz;
 
 UPDATE jobs
-SET max_attempts = (spec ->> 'max_attempts')::integer;
+SET max_attempts = substring(
+    spec::text FROM '"max_attempts"[[:space:]]*:[[:space:]]*([0-9]+)'
+)::integer;
 
 ALTER TABLE jobs
     ALTER COLUMN max_attempts SET NOT NULL,
@@ -19,9 +21,6 @@ ALTER TABLE jobs
         attempts >= 0 AND attempts <= max_attempts
     ),
     ADD CONSTRAINT jobs_max_attempts_check CHECK (max_attempts BETWEEN 1 AND 5),
-    ADD CONSTRAINT jobs_spec_attempts_check CHECK (
-        max_attempts = (spec ->> 'max_attempts')::integer
-    ),
     ADD CONSTRAINT jobs_lease_version_check CHECK (lease_version >= 0),
     ADD CONSTRAINT jobs_lease_owner_check CHECK (
         lease_owner IS NULL OR lease_owner ~ '^[A-Za-z0-9._:-]{1,128}$'

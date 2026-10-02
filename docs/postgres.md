@@ -66,7 +66,10 @@ second statement/idle-transaction and two-second lock timeouts. Cleanup uses a
 separate bounded context. SQL parameters carry user values; keys and DSNs are
 not logged. The stored `spec` uses PostgreSQL `json`, because `jsonb` cannot
 represent an escaped NUL accepted by the checksum contract; no spec-field
-index/query is needed yet.
+index/query is used. `max_attempts` is stored separately for claim filtering.
+The lease migration backfills it from the canonical JSON text with a narrow
+regular expression rather than a JSON extraction operator, because PostgreSQL
+JSON extraction rejects an otherwise preserved escaped NUL.
 
 ## Claim protocol
 
