@@ -57,10 +57,17 @@ func readJob(row pgx.Row) (jobs.Job, error) {
 	if err := row.Scan(&j.ID, &encoded, &j.State, &j.Attempts, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		return jobs.Job{}, err
 	}
-	if err := json.Unmarshal(encoded, &j.Spec); err != nil {
-		return jobs.Job{}, fmt.Errorf("decode stored spec: %w", err)
+	if err := decodeSpec(encoded, &j.Spec); err != nil {
+		return jobs.Job{}, err
 	}
 	return j, nil
+}
+
+func decodeSpec(encoded []byte, spec *jobs.Spec) error {
+	if err := json.Unmarshal(encoded, spec); err != nil {
+		return fmt.Errorf("decode stored spec: %w", err)
+	}
+	return nil
 }
 
 // Submit persists one normalized request per key. The bool identifies replay.
@@ -91,9 +98,9 @@ func (s *Store) Submit(ctx context.Context, key string, spec jobs.Spec) (jobs.Jo
 		return jobs.Job{}, false, fmt.Errorf("begin admission: %w", err)
 	}
 	defer rollback(tx)
-	j, err := readJob(tx.QueryRow(ctx, `INSERT INTO jobs (id, idempotency_key, request_fingerprint, spec)
- VALUES ($1, $2, $3, $4) ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+jobColumns,
-		id, key, fingerprint[:], string(encoded)))
+	j, err := readJob(tx.QueryRow(ctx, `INSERT INTO jobs (id, idempotency_key, request_fingerprint, spec, max_attempts)
+ VALUES ($1, $2, $3, $4, $5) ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+jobColumns,
+		id, key, fingerprint[:], string(encoded), spec.MaxAttempts))
 	replay := errors.Is(err, pgx.ErrNoRows)
 	if replay {
 		// A new READ COMMITTED statement sees the winning concurrent commit. A

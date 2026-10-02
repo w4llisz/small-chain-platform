@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 runnable; M2.1 durable admission implemented separately.** The API and worker pool run in one process with bounded in-memory storage. A PostgreSQL store now provides migrations and atomic submit/get with database integration tests; it is not yet connected to HTTP or workers. Durable scheduling, multiple worker processes, tracing, and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 runnable; M2.2 durable admission and claiming implemented separately.** The API and worker pool run in one process with bounded in-memory storage. A PostgreSQL store now provides migrations, atomic submit/get, and versioned lease tokens for concurrent claims, backed by database integration tests; it is not yet connected to HTTP or workers. Heartbeats, completion, recovery, tracing, and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -56,6 +56,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Deadlines and cancellation | Per-attempt context; canceled jobs cannot be overwritten by late success |
 | Graceful lifecycle | Stop admission, drain accepted tasks; cancel remaining work at shutdown deadline |
 | Bounded retention | Cap on retained jobs and keys; new keys rejected at capacity; existing keys still replay |
+| Durable DB primitives | PostgreSQL idempotent admission plus bounded, non-blocking batch claims with fencing tokens; not yet used by HTTP/workers |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, GitHub Actions |
 
@@ -80,7 +81,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | --- | --- |
 | `cmd/small-chain/` | Configuration, HTTP server, signals and shutdown |
 | `internal/jobs/` | Job model, state machine, concurrency, retries and tests |
-| `internal/postgres/` | Embedded migrations, durable idempotent submit/get, real-DB tests (not wired to HTTP) |
+| `internal/postgres/` | Migrations, durable submit/get/claim, lease tokens and real-DB tests (not wired to HTTP) |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |

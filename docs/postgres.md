@@ -1,11 +1,10 @@
-# PostgreSQL admission (M2.1)
+# PostgreSQL durable core (M2.1–M2.2)
 
-Implemented: an embedded, forward-only migration and `internal/postgres.Store`
-with context-aware `Submit`/`Get`. This is a persistence boundary ready for the
-next scheduler increment. **The HTTP server still runs the M1 memory engine.**
-There is no persistent worker, lease, heartbeat, recovery or database-backed HTTP
-202 yet. The schema deliberately allows only queued jobs with zero attempts;
-a later migration will add the execution state/lease invariants together.
+Implemented: embedded forward-only migrations and an `internal/postgres.Store`
+with context-aware `Submit`, `Get`, and `ClaimDue`. PostgreSQL now owns durable
+admission and atomic lease assignment. **The HTTP server and worker still run the
+M1 memory engine.** There is no persistent worker execution, heartbeat,
+completion, cancellation, lease recovery or database-backed HTTP 202 yet.
 
 ## Reproduce
 
@@ -69,6 +68,28 @@ not logged. The stored `spec` uses PostgreSQL `json`, because `jsonb` cannot
 represent an escaped NUL accepted by the checksum contract; no spec-field
 index/query is needed yet.
 
+## Claim protocol
+
+1. Validate a stable worker owner, batch size (1–100), and lease duration
+   (1 second–15 minutes) before opening a transaction.
+2. In one READ COMMITTED transaction, select due queued/retrying rows ordered by
+   `(available_at, id)` with `FOR UPDATE SKIP LOCKED`. Exclude rows whose
+   persisted attempt budget is exhausted. A matching partial index avoids
+   indexing running/terminal history.
+3. In the same statement, change candidates to running, increment attempt and
+   lease version, and record owner/expiry. `statement_timestamp()` supplies a
+   shared database clock; Go never computes lease expiry.
+4. Read all claimed rows and commit before returning them. Task execution must
+   occur after `ClaimDue` returns. If commit is ambiguous, the method returns no
+   claims and the caller must not execute work; a future recovery pass handles
+   the stranded lease.
+
+`(job ID, owner, lease version)` is the fencing token future mutations must
+match. M2.2 only creates that token. It does not yet heartbeat, finish, retry,
+cancel, append events, or reclaim an expired running row. An expired lease is
+therefore still unavailable today. This distinction is important: safe parallel
+claiming has been implemented; crash recovery has not.
+
 ## Migration contract
 
 `cmd/migrate` embeds numbered SQL files. It obtains a transaction-level advisory
@@ -78,20 +99,19 @@ same transaction. Concurrent migrators serialize; a failed migration rolls back
 both DDL and history. Unknown/newer or edited history fails closed. The lock
 coordinates this project's migrators, not arbitrary manual SQL changes.
 
-Never edit an applied file. Add `0002_*.sql` for the next change. Only small,
+Never edit an applied file. Add `0003_*.sql` for the next change. Only small,
 transaction-compatible migrations belong here; no `CREATE INDEX CONCURRENTLY`,
 destructive automatic rollback, or production online-migration claim is made.
 
 ## Evidence and next increment
 
-The real-database suite covers concurrent migrations, checksum drift, unknown
-history, DDL rollback, concurrent same/different requests across two pools,
-explicit/implicit defaults, waiting on an uncommitted winner (both commit and
-rollback), reconnect/read/replay, fingerprint storage, invalid requests, canceled
-admission, and missing records. Reconnect is **not** a database crash-recovery or
-worker-recovery test. Those remain M2 acceptance criteria.
+The real-database suite covers the M2.1 admission cases plus concurrent claims
+from two independent pools, uniqueness across 24 jobs, deterministic eligibility,
+attempt/version increments, delayed/exhausted/running exclusion, partial-index
+shape, input bounds, cancellation, and skipping an explicitly locked queue head.
+These are correctness tests, not throughput measurements. Reconnect is **not** a
+database crash-recovery or worker-recovery test.
 
-Next: add the lease schema and transactional claim operation with
-`FOR UPDATE SKIP LOCKED`, persisted attempt limits and monotonically increasing
-lease versions. Verify two independent clients cannot claim the same job before
-introducing worker execution and heartbeats.
+Next: implement heartbeat and fenced completion/retry/cancel. Every mutation must
+match ID, owner, version and running state; stale tokens affect zero rows. Only
+after those primitives exist should a database worker execute checksum tasks.

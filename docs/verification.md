@@ -45,3 +45,16 @@ entry in the existing `.dockerignore` allowlist; the follow-up build fix include
 that file in the Docker context. Main promotion waits for the fixed candidate's
 full CI result. Local fuzzing also passed (10-second budget, 434,357 executions);
 this is input-validation evidence, not throughput.
+
+## M2.2 claim increment — 2026-10-02
+
+Local, Linux amd64 with Go 1.27.1: the integration-tagged PostgreSQL package
+compiled and passed `go vet`; this is not a substitute for database execution.
+The candidate branch CI provisions PostgreSQL 16 and runs the complete suite with
+the race detector before main is advanced. New real-DB cases exercise two-pool
+concurrent claiming, `SKIP LOCKED`, eligibility/order, attempt/version changes,
+the ready partial index, input bounds and canceled contexts. `make verify`, fuzz,
+module verification and container build remain required in the same workflow.
+
+No heartbeat, fenced completion, expired-lease recovery, database worker or
+performance result is claimed by this increment.

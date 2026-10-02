@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction yet: a durable scheduler needs transactional claim/finish operations, not a generic CRUD interface. M2.1 adds a concrete PostgreSQL admission store and integration tests; the scheduler boundary will grow through transactional claim/finish operations rather than generic CRUD.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission; M2.2 adds transactional claiming and fencing tokens. The remaining boundary will grow through heartbeat/finish operations.
 
 ## State machine
 
@@ -52,10 +52,31 @@ An attempt gets a child deadline of the job context, canceled immediately after 
 unique key and explicit READ COMMITTED transactions. Replays use a separate
 statement after conflict to see a concurrent winner. `cmd/migrate` serializes
 migration execution with a transaction advisory lock and verifies checksummed
-history. The schema currently restricts state to queued and attempts to zero.
+history. At the M2.1 migration boundary the schema restricts state to queued and
+attempts to zero; the following migration expands those invariants for claims.
 Database connection/query/lock waits are bounded. Full protocol, retention
 limitations and real-database tests are in [the PostgreSQL guide](postgres.md).
 The M1 HTTP/worker process is unchanged; it cannot claim durable acceptance yet.
+
+## M2.2: transactional claims (implemented, not wired to workers)
+
+Migration `0002_leases.sql` persists `max_attempts`, `available_at`, lease owner,
+monotonic version and expiry. Database constraints couple `running` state to a
+complete lease and keep attempts within the normalized request budget. A partial
+`(available_at, id)` index contains only queued/retrying rows.
+
+`ClaimDue` validates batch/lease bounds, opens a short READ COMMITTED transaction,
+then selects due rows in deterministic order with `FOR UPDATE SKIP LOCKED` and
+updates them in one statement. Claiming increments attempts and lease version,
+sets expiry from PostgreSQL `statement_timestamp()`, and commits before returning.
+Two independent pools can therefore claim different rows without coordinating in
+Go. A returned `(owner, version)` is a future fencing token; no code consumes it
+yet. An ambiguous commit returns no work, so the caller must not execute anything.
+
+Claim does **not** make lease expiry actionable: running rows, even expired ones,
+remain unavailable until the recovery transition is implemented. Heartbeat,
+finish/retry/cancel, append-only events, worker execution and HTTP persistence are
+still planned. This avoids presenting a database row lock as crash recovery.
 
 ## M2 remainder: PostgreSQL as the durable queue (planned)
 
@@ -67,7 +88,7 @@ Use partial indexes restricted to eligible queued/retrying states and running le
 
 Claim protocol:
 
-1. In a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, set expiry, append an event. Commit before execution.
+1. **Implemented except events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, and set expiry. Commit before execution.
 2. Execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
 3. Finish with a conditional update on ID, owner, version and running state. Update result/state and append event in one transaction. Stale completion must affect zero rows.
 4. On retryable failure, set `available_at` with bounded jitter and clear the lease. Recover expired leases with version-checked transitions and the persisted attempt limit.
