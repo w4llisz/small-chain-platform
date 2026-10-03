@@ -90,7 +90,7 @@ func TestMigrations(t *testing.T) {
 	}
 	migrate(t, s)
 	var count int
-	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 2 {
+	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 3 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	admission, err := migrations.ReadFile("migrations/0001_admission.sql")
@@ -101,9 +101,14 @@ func TestMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	outcomes, err := migrations.ReadFile("migrations/0003_outcomes.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
 	altered := fstest.MapFS{
 		"migrations/0001_admission.sql": {Data: append(append([]byte{}, admission...), '\n')},
 		"migrations/0002_leases.sql":    {Data: leases},
+		"migrations/0003_outcomes.sql":  {Data: outcomes},
 	}
 	if err := s.migrate(context.Background(), altered); err == nil || !strings.Contains(err.Error(), "history mismatch") {
 		t.Fatalf("edited migration: %v", err)
@@ -111,7 +116,8 @@ func TestMigrations(t *testing.T) {
 	broken := fstest.MapFS{
 		"migrations/0001_admission.sql": {Data: admission},
 		"migrations/0002_leases.sql":    {Data: leases},
-		"migrations/0003_broken.sql":    {Data: []byte("CREATE TABLE rollback_probe (id int); SELECT 1/0;")},
+		"migrations/0003_outcomes.sql":  {Data: outcomes},
+		"migrations/0004_broken.sql":    {Data: []byte("CREATE TABLE rollback_probe (id int); SELECT 1/0;")},
 	}
 	if err := s.migrate(context.Background(), broken); err == nil {
 		t.Fatal("broken migration succeeded")
@@ -120,7 +126,7 @@ func TestMigrations(t *testing.T) {
 	if err := s.pool.QueryRow(context.Background(), "SELECT to_regclass('rollback_probe') IS NULL").Scan(&absent); err != nil || !absent {
 		t.Fatalf("DDL not rolled back: %v %v", absent, err)
 	}
-	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 2 {
+	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 3 {
 		t.Fatalf("failed migration recorded: %d %v", count, err)
 	}
 	migrate(t, s) // A failed migration does not strand the advisory lock.
@@ -168,6 +174,62 @@ func TestLeaseMigrationBackfillsExistingJob(t *testing.T) {
 	}
 	if maxAttempts != 5 || availableAt.IsZero() {
 		t.Fatalf("backfill max_attempts=%d available_at=%s", maxAttempts, availableAt)
+	}
+}
+
+func TestOutcomeMigrationBackfillsExistingTerminalStates(t *testing.T) {
+	store, _ := database(t)
+	admission, err := migrations.ReadFile("migrations/0001_admission.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leases, err := migrations.ReadFile("migrations/0002_leases.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.migrate(context.Background(), fstest.MapFS{
+		"migrations/0001_admission.sql": {Data: admission},
+		"migrations/0002_leases.sql":    {Data: leases},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := (jobs.Spec{Kind: "demo.checksum", MaxAttempts: 3}).Normalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := sha256.Sum256(encoded)
+	states := []jobs.State{jobs.Succeeded, jobs.Failed, jobs.Canceled, jobs.Retrying}
+	for i, state := range states {
+		id := fmt.Sprintf("%032x", i+1)
+		if _, err := store.pool.Exec(context.Background(), `INSERT INTO jobs
+            (id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts)
+            VALUES ($1, $2, $3, $4, $5, 1, 3)`,
+			id, "before-outcomes-"+string(state), fingerprint[:], string(encoded), state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range states {
+		var result, message string
+		var resultIsNull, messageIsNull bool
+		if err := store.pool.QueryRow(context.Background(), `SELECT COALESCE(result, ''), result IS NULL,
+			COALESCE(error, ''), error IS NULL FROM jobs WHERE idempotency_key = $1`,
+			"before-outcomes-"+string(state)).Scan(&result, &resultIsNull, &message, &messageIsNull); err != nil {
+			t.Fatal(err)
+		}
+		if state == jobs.Succeeded {
+			if resultIsNull || result != "result unavailable before migration 0003" || !messageIsNull {
+				t.Fatalf("succeeded backfill result=%q result_null=%t error_null=%t", result, resultIsNull, messageIsNull)
+			}
+		} else if !resultIsNull || messageIsNull || message == "" {
+			t.Fatalf("%s backfill result_null=%t error=%q error_null=%t", state, resultIsNull, message, messageIsNull)
+		}
 	}
 }
 

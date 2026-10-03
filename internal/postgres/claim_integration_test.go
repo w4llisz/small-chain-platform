@@ -106,10 +106,10 @@ func TestClaimDueEligibilityOrderAndVersion(t *testing.T) {
 		id    string
 	}{
 		{"UPDATE jobs SET available_at = statement_timestamp() - interval '4 seconds' WHERE id = $1", ids["first"]},
-		{`UPDATE jobs SET state = 'retrying', attempts = 1, lease_version = 3,
+		{`UPDATE jobs SET state = 'retrying', attempts = 1, lease_version = 3, error = 'previous failure',
                   available_at = statement_timestamp() - interval '3 seconds' WHERE id = $1`, ids["retry"]},
 		{"UPDATE jobs SET available_at = statement_timestamp() + interval '1 hour' WHERE id = $1", ids["delayed"]},
-		{`UPDATE jobs SET state = 'retrying', attempts = max_attempts,
+		{`UPDATE jobs SET state = 'retrying', attempts = max_attempts, error = 'attempts exhausted fixture',
                   available_at = statement_timestamp() - interval '5 seconds' WHERE id = $1`, ids["exhausted"]},
 	}
 	for _, update := range updates {

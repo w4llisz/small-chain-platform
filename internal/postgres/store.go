@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -49,13 +50,20 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 
 func (s *Store) Close() { s.pool.Close() }
 
-const jobColumns = "id, spec, state, attempts, created_at, updated_at"
+const jobColumns = "id, spec, state, attempts, result, error, created_at, updated_at"
 
 func readJob(row pgx.Row) (jobs.Job, error) {
 	var j jobs.Job
 	var encoded []byte
-	if err := row.Scan(&j.ID, &encoded, &j.State, &j.Attempts, &j.CreatedAt, &j.UpdatedAt); err != nil {
+	var result, errorMessage sql.NullString
+	if err := row.Scan(&j.ID, &encoded, &j.State, &j.Attempts, &result, &errorMessage, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		return jobs.Job{}, err
+	}
+	if result.Valid {
+		j.Result = result.String
+	}
+	if errorMessage.Valid {
+		j.Error = errorMessage.String
 	}
 	if err := decodeSpec(encoded, &j.Spec); err != nil {
 		return jobs.Job{}, err

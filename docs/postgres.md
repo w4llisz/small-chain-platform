@@ -1,10 +1,11 @@
-# PostgreSQL durable core (M2.1–M2.2)
+# PostgreSQL durable core (M2.1–M2.3)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
-with context-aware `Submit`, `Get`, and `ClaimDue`. PostgreSQL now owns durable
-admission and atomic lease assignment. **The HTTP server and worker still run the
-M1 memory engine.** There is no persistent worker execution, heartbeat,
-completion, cancellation, lease recovery or database-backed HTTP 202 yet.
+with context-aware admission, claiming, heartbeat and outcome operations.
+PostgreSQL now owns durable admission, lease assignment and fenced state writes.
+**The HTTP server and worker still run the M1 memory engine.** There is no
+persistent worker execution, expired-lease recovery or database-backed HTTP 202
+yet.
 
 ## Reproduce
 
@@ -87,11 +88,30 @@ JSON extraction rejects an otherwise preserved escaped NUL.
    claims and the caller must not execute work; a future recovery pass handles
    the stranded lease.
 
-`(job ID, owner, lease version)` is the fencing token future mutations must
-match. M2.2 only creates that token. It does not yet heartbeat, finish, retry,
-cancel, append events, or reclaim an expired running row. An expired lease is
-therefore still unavailable today. This distinction is important: safe parallel
-claiming has been implemented; crash recovery has not.
+`(job ID, owner, lease version)` is the fencing token lifecycle mutations match.
+M2.3 consumes that token, but an expired running row is still unavailable until
+recovery is implemented. This distinction is important: safe parallel claiming
+and stale-write rejection exist; crash recovery does not.
+
+## Lifecycle protocol
+
+- `Heartbeat` conditionally extends an unexpired running lease from database
+  time. It cannot revive an expired lease.
+- `Complete` conditionally stores a bounded result and clears the lease.
+- `FailAttempt` atomically stores a bounded error, clears the lease and either
+  schedules `retrying` from database time or marks the job `failed` when its
+  persisted attempt budget is exhausted.
+- `Cancel` is an authoritative operator transition for queued, running and
+  retrying work. It increments the lease version before clearing lease fields,
+  is idempotent after cancellation, and cannot overwrite a completed terminal
+  state.
+
+Worker-owned mutations match ID, owner, version, running state and unexpired
+lease in a single statement. Zero updated rows map to `ErrStaleLease`. The
+completion/cancellation race therefore has one terminal winner. Transactions
+never span task execution, heartbeat intervals or retry delay. Fencing protects
+the job row; external handlers still need idempotency because at-least-once work
+can perform a side effect before a stale result is rejected.
 
 ## Migration contract
 
@@ -102,7 +122,7 @@ same transaction. Concurrent migrators serialize; a failed migration rolls back
 both DDL and history. Unknown/newer or edited history fails closed. The lock
 coordinates this project's migrators, not arbitrary manual SQL changes.
 
-Never edit an applied file. Add `0003_*.sql` for the next change. Only small,
+Never edit an applied file. Add `0004_*.sql` for the next change. Only small,
 transaction-compatible migrations belong here; no `CREATE INDEX CONCURRENTLY`,
 destructive automatic rollback, or production online-migration claim is made.
 
@@ -112,9 +132,13 @@ The real-database suite covers the M2.1 admission cases plus concurrent claims
 from two independent pools, uniqueness across 24 jobs, deterministic eligibility,
 attempt/version increments, delayed/exhausted/running exclusion, partial-index
 shape, input bounds, cancellation, and skipping an explicitly locked queue head.
-These are correctness tests, not throughput measurements. Reconnect is **not** a
-database crash-recovery or worker-recovery test.
+M2.3 cases cover heartbeat, success, delayed retry, attempt exhaustion,
+expired/stale tokens, cancellation fencing/idempotency, migration backfill, and a
+two-connection completion/cancel race. These are correctness tests, not
+throughput measurements. Reconnect is **not** a database crash-recovery or
+worker-recovery test.
 
-Next: implement heartbeat and fenced completion/retry/cancel. Every mutation must
-match ID, owner, version and running state; stale tokens affect zero rows. Only
-after those primitives exist should a database worker execute checksum tasks.
+Next: implement expired-lease recovery. A bounded atomic sweep must move expired
+running rows to retrying or failed according to the persisted attempt budget and
+advance the fencing version. Two sweepers must not recover one row twice. Only
+after that invariant is tested should a database worker execute checksum tasks.

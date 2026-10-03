@@ -58,3 +58,19 @@ module verification and container build remain required in the same workflow.
 
 No heartbeat, fenced completion, expired-lease recovery, database worker or
 performance result is claimed by this increment.
+
+## M2.3 fenced lifecycle increment — 2026-10-03
+
+Local, Linux amd64 with Go 1.27.1: `make verify` passed formatting, vet, race
+tests, static build and the real-process smoke workflow. The integration-tagged
+PostgreSQL package is also compiled locally before submission. Database execution
+is delegated to candidate-branch CI, which provisions PostgreSQL 16 and runs the
+complete suite with the race detector; inspect the candidate commit's actual
+checks rather than treating compilation as database evidence.
+
+New real-database cases cover heartbeat from database time, fenced success,
+delayed retry and attempt exhaustion, expired/stale lease rejection, authoritative
+cancel with version advance, idempotent cancellation, a two-connection
+completion/cancel race, and upgrade backfill for legacy terminal states. No
+expired-lease recovery, database-backed worker/HTTP path, exactly-once side
+effects or performance result is claimed.

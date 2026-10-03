@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"regexp"
 	"time"
@@ -38,8 +39,8 @@ func (s *Store) ClaimDue(ctx context.Context, owner string, limit int, lease tim
 	if limit < 1 || limit > maxClaimBatch {
 		return nil, fmt.Errorf("%w: claim limit must be 1..%d", jobs.ErrInvalid, maxClaimBatch)
 	}
-	if lease < minLease || lease > maxLease {
-		return nil, fmt.Errorf("%w: lease duration must be between %s and %s", jobs.ErrInvalid, minLease, maxLease)
+	if err := validateLeaseDuration(lease); err != nil {
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
@@ -62,7 +63,7 @@ WITH candidates AS (
     LIMIT $1
 ), claimed AS (
     UPDATE jobs AS j
-    SET state = 'running',
+    SET state = 'running', result = NULL, error = NULL,
         attempts = j.attempts + 1,
         lease_owner = $2,
         lease_version = j.lease_version + 1,
@@ -70,10 +71,10 @@ WITH candidates AS (
         updated_at = statement_timestamp()
     FROM candidates AS c
     WHERE j.id = c.id
-    RETURNING j.id, j.spec, j.state, j.attempts, j.created_at, j.updated_at,
+    RETURNING j.id, j.spec, j.state, j.attempts, j.result, j.error, j.created_at, j.updated_at,
               j.lease_owner, j.lease_version, j.lease_expires_at, j.available_at
 )
-SELECT id, spec, state, attempts, created_at, updated_at,
+SELECT id, spec, state, attempts, result, error, created_at, updated_at,
        lease_owner, lease_version, lease_expires_at
 FROM claimed
 ORDER BY available_at, id`, limit, owner, lease.Microseconds())
@@ -84,17 +85,9 @@ ORDER BY available_at, id`, limit, owner, lease.Microseconds())
 
 	claims := make([]Claim, 0, limit)
 	for rows.Next() {
-		var claim Claim
-		var encoded []byte
-		if err := rows.Scan(
-			&claim.Job.ID, &encoded, &claim.Job.State, &claim.Job.Attempts,
-			&claim.Job.CreatedAt, &claim.Job.UpdatedAt,
-			&claim.Owner, &claim.Version, &claim.ExpiresAt,
-		); err != nil {
+		claim, err := scanClaim(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan claimed job: %w", err)
-		}
-		if err := decodeSpec(encoded, &claim.Job.Spec); err != nil {
-			return nil, err
 		}
 		claims = append(claims, claim)
 	}
@@ -106,4 +99,27 @@ ORDER BY available_at, id`, limit, owner, lease.Microseconds())
 		return nil, fmt.Errorf("commit claim (do not execute returned work): %w", err)
 	}
 	return claims, nil
+}
+
+func scanClaim(row pgx.Row) (Claim, error) {
+	var claim Claim
+	var encoded []byte
+	var result, errorMessage sql.NullString
+	if err := row.Scan(
+		&claim.Job.ID, &encoded, &claim.Job.State, &claim.Job.Attempts,
+		&result, &errorMessage, &claim.Job.CreatedAt, &claim.Job.UpdatedAt,
+		&claim.Owner, &claim.Version, &claim.ExpiresAt,
+	); err != nil {
+		return Claim{}, err
+	}
+	if result.Valid {
+		claim.Job.Result = result.String
+	}
+	if errorMessage.Valid {
+		claim.Job.Error = errorMessage.String
+	}
+	if err := decodeSpec(encoded, &claim.Job.Spec); err != nil {
+		return Claim{}, err
+	}
+	return claim, nil
 }

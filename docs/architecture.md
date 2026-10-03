@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission; M2.2 adds transactional claiming and fencing tokens. The remaining boundary will grow through heartbeat/finish operations.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, and M2.3 consumes those tokens for heartbeat and outcomes. Expired-lease recovery and the database worker loop remain separate increments.
 
 ## State machine
 
@@ -70,29 +70,56 @@ then selects due rows in deterministic order with `FOR UPDATE SKIP LOCKED` and
 updates them in one statement. Claiming increments attempts and lease version,
 sets expiry from PostgreSQL `statement_timestamp()`, and commits before returning.
 Two independent pools can therefore claim different rows without coordinating in
-Go. A returned `(owner, version)` is a future fencing token; no code consumes it
-yet. An ambiguous commit returns no work, so the caller must not execute anything.
+Go. A returned `(owner, version)` is consumed by the M2.3 lifecycle operations.
+An ambiguous commit returns no work, so the caller must not execute anything.
 
 Claim does **not** make lease expiry actionable: running rows, even expired ones,
 remain unavailable until the recovery transition is implemented. Heartbeat,
-finish/retry/cancel, append-only events, worker execution and HTTP persistence are
-still planned. This avoids presenting a database row lock as crash recovery.
+finish/retry/cancel are implemented store operations, but append-only events,
+worker execution, recovery and HTTP persistence are still planned. This avoids
+presenting a database row lock as crash recovery.
+
+## M2.3: fenced lifecycle writes (implemented, not wired to workers)
+
+Migration `0003_outcomes.sql` stores bounded results and errors and constrains
+them to valid lifecycle states. It backfills terminal/retrying rows permitted by
+the previous schema before enabling the constraint, so the migration works on a
+non-empty database rather than only on a fresh test schema.
+
+Heartbeat, completion and failure all execute as one conditional `UPDATE`. They
+match job ID, owner, version, running state, and an expiry later than PostgreSQL
+`statement_timestamp()`. A mismatch returns `ErrStaleLease`; an expired worker
+cannot revive its own lease. Heartbeat extends expiry from database time.
+Successful completion clears the lease with its result. Failure either records a
+delayed retry and releases the lease or becomes terminal when the persisted
+attempt budget is exhausted.
+
+Cancellation is an authoritative operator action rather than a lease action. It
+can transition queued, running or retrying jobs, increments `lease_version`, and
+clears lease fields in the same statement. Repeating cancellation is idempotent;
+a competing terminal completion yields exactly one winner. These operations keep
+transactions shorter than task execution and backoff: no transaction is held
+while user work runs.
+
+This is state-write fencing, not exactly-once execution. Recovery of expired
+running rows is not implemented, and fencing cannot roll back an external side
+effect produced before a stale worker's result is rejected.
 
 ## M2 remainder: PostgreSQL as the durable queue (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 
-Proposed records: `jobs(id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at)`, plus append-only `job_events`. Use a unique constraint on the key, a ready-job index on state/availability, and an expired-lease index. Tenant scoping is deferred until authentication exists.
+Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. Append-only `job_events`, an expired-lease index and retention remain planned. Tenant scoping is deferred until authentication exists.
 
 Use partial indexes restricted to eligible queued/retrying states and running leases, with deterministic `(available_at, id)` claim ordering. Validate with `EXPLAIN (ANALYZE, BUFFERS)` on representative distributions before claiming an optimization. Bound the Go connection pool and transaction/statement timeouts; never hold a database transaction during task execution or backoff.
 
 Claim protocol:
 
 1. **Implemented except events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, and set expiry. Commit before execution.
-2. Execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
-3. Finish with a conditional update on ID, owner, version and running state. Update result/state and append event in one transaction. Stale completion must affect zero rows.
-4. On retryable failure, set `available_at` with bounded jitter and clear the lease. Recover expired leases with version-checked transitions and the persisted attempt limit.
-5. On cancellation, persist canceled state and increment lease version. Workers poll/heartbeat for cancellation. Stale results cannot overwrite canceled state; cancellation cannot undo an external side effect.
+2. **Store operation implemented; worker integration planned:** execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
+3. **Implemented except events:** finish with a conditional update on ID, owner, version, running state and unexpired lease. Stale completion affects zero rows.
+4. **Failure/retry implemented; recovery planned:** on attempt failure, set `available_at` and clear the lease atomically. Recover expired leases with version-checked transitions and the persisted attempt limit.
+5. **Store operation implemented; worker polling planned:** on cancellation, persist canceled state and increment lease version. Stale results cannot overwrite canceled state; cancellation cannot undo an external side effect.
 
 PostgreSQL describes `SKIP LOCKED` as useful for queue-like consumers, with an inconsistent view unsuitable for general-purpose reads: [official SELECT documentation](https://www.postgresql.org/docs/current/sql-select.html). Use it for task claims, not complete user-facing job lists.
 
