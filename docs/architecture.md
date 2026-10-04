@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, and M2.3 consumes those tokens for heartbeat and outcomes. Expired-lease recovery and the database worker loop remain separate increments.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, and M2.4 makes expired leases recoverable. The database worker loop remains a separate increment.
 
 ## State machine
 
@@ -73,11 +73,11 @@ Two independent pools can therefore claim different rows without coordinating in
 Go. A returned `(owner, version)` is consumed by the M2.3 lifecycle operations.
 An ambiguous commit returns no work, so the caller must not execute anything.
 
-Claim does **not** make lease expiry actionable: running rows, even expired ones,
-remain unavailable until the recovery transition is implemented. Heartbeat,
-finish/retry/cancel are implemented store operations, but append-only events,
-worker execution, recovery and HTTP persistence are still planned. This avoids
-presenting a database row lock as crash recovery.
+Claim alone does **not** make lease expiry actionable: `RecoverExpired` must run
+before an expired row becomes available again. Heartbeat, finish/retry/cancel and
+recovery are implemented store operations, but append-only events, worker
+execution and HTTP persistence are still planned. This avoids presenting a
+database row lock as end-to-end crash recovery.
 
 ## M2.3: fenced lifecycle writes (implemented, not wired to workers)
 
@@ -101,15 +101,33 @@ a competing terminal completion yields exactly one winner. These operations keep
 transactions shorter than task execution and backoff: no transaction is held
 while user work runs.
 
-This is state-write fencing, not exactly-once execution. Recovery of expired
-running rows is not implemented, and fencing cannot roll back an external side
-effect produced before a stale worker's result is rejected.
+This is state-write fencing, not exactly-once execution. Fencing cannot roll back
+an external side effect produced before a stale worker's result is rejected.
+
+## M2.4: expired-lease recovery (implemented, not scheduled by a worker)
+
+Migration `0004_recovery.sql` adds a partial `(lease_expires_at, id)` index for
+running rows. `RecoverExpired` validates a batch and retry-delay bound, then uses
+one statement to lock expired rows in deterministic lease order with `FOR UPDATE
+SKIP LOCKED` and update them. Attempts below `max_attempts` become `retrying` at
+database-time plus the delay; exhausted attempts become `failed`. Both paths
+record a fixed reason, advance `lease_version`, and clear owner/expiry.
+
+The statement is its own short transaction: no task execution or backoff occurs
+while locks are held. Concurrent sweepers skip each other's rows, and later
+sweeps ignore the transitioned rows. A stale worker cannot heartbeat or finish
+after recovery. Recovery is deliberately explicit rather than hidden inside
+`ClaimDue`, so a future worker can schedule and observe it independently.
+
+This completes the database transition needed after a worker crash, but not the
+end-to-end behavior: no running process periodically calls the sweep yet, and no
+process-kill test is claimed until the database worker loop exists.
 
 ## M2 remainder: PostgreSQL as the durable queue (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 
-Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. Append-only `job_events`, an expired-lease index and retention remain planned. Tenant scoping is deferred until authentication exists.
+Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. Append-only `job_events` and retention remain planned. Tenant scoping is deferred until authentication exists.
 
 Use partial indexes restricted to eligible queued/retrying states and running leases, with deterministic `(available_at, id)` claim ordering. Validate with `EXPLAIN (ANALYZE, BUFFERS)` on representative distributions before claiming an optimization. Bound the Go connection pool and transaction/statement timeouts; never hold a database transaction during task execution or backoff.
 
@@ -118,7 +136,7 @@ Claim protocol:
 1. **Implemented except events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, and set expiry. Commit before execution.
 2. **Store operation implemented; worker integration planned:** execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
 3. **Implemented except events:** finish with a conditional update on ID, owner, version, running state and unexpired lease. Stale completion affects zero rows.
-4. **Failure/retry implemented; recovery planned:** on attempt failure, set `available_at` and clear the lease atomically. Recover expired leases with version-checked transitions and the persisted attempt limit.
+4. **Implemented as store operations:** on attempt failure, set `available_at` and clear the lease atomically. A bounded concurrent-safe sweep recovers expired leases using the persisted attempt limit and advances the fencing version.
 5. **Store operation implemented; worker polling planned:** on cancellation, persist canceled state and increment lease version. Stale results cannot overwrite canceled state; cancellation cannot undo an external side effect.
 
 PostgreSQL describes `SKIP LOCKED` as useful for queue-like consumers, with an inconsistent view unsuitable for general-purpose reads: [official SELECT documentation](https://www.postgresql.org/docs/current/sql-select.html). Use it for task claims, not complete user-facing job lists.

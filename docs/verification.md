@@ -74,3 +74,19 @@ cancel with version advance, idempotent cancellation, a two-connection
 completion/cancel race, and upgrade backfill for legacy terminal states. No
 expired-lease recovery, database-backed worker/HTTP path, exactly-once side
 effects or performance result is claimed.
+
+## M2.4 expired-lease recovery increment — 2026-10-04
+
+Local, Linux amd64 with Go 1.27.1: the integration-tagged PostgreSQL package is
+compiled and vetted before submission, and `make verify` covers formatting, vet,
+race tests, static build and the real-process M1 smoke workflow. Real database
+execution remains a candidate-branch CI gate: PostgreSQL 16 runs the complete
+integration suite with the race detector before main is advanced.
+
+New database cases exercise live-versus-expired eligibility, database-time retry
+delay, persisted budget exhaustion, version advance and lease clearing, stale
+completion rejection for every recovered claim, the partial recovery index,
+input/cancellation behavior, and two independent sweepers recovering 24 rows
+exactly once. This proves the recovery transition, not a process-kill workflow:
+the database worker loop is still planned. No throughput or exactly-once claim is
+made.

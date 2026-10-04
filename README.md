@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 runnable; M2.3 durable lifecycle primitives implemented separately.** The API and worker pool run in one process with bounded in-memory storage. A PostgreSQL store now provides migrations, atomic submit/get/claim, lease heartbeat, fenced outcomes and authoritative cancellation, backed by database integration tests; it is not yet connected to HTTP or workers. Expired-lease recovery, tracing, and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 runnable; M2.4 durable lifecycle and recovery primitives implemented separately.** The API and worker pool run in one process with bounded in-memory storage. A PostgreSQL store now provides migrations, atomic submit/get/claim, lease heartbeat, fenced outcomes, cancellation and bounded expired-lease recovery, backed by database integration tests; it is not yet connected to HTTP or workers. Database worker integration, tracing, and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -56,7 +56,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Deadlines and cancellation | Per-attempt context; canceled jobs cannot be overwritten by late success |
 | Graceful lifecycle | Stop admission, drain accepted tasks; cancel remaining work at shutdown deadline |
 | Bounded retention | Cap on retained jobs and keys; new keys rejected at capacity; existing keys still replay |
-| Durable DB primitives | PostgreSQL idempotent admission, bounded batch claims, heartbeat, fenced completion/retry and cancel; not yet used by HTTP/workers |
+| Durable DB primitives | PostgreSQL admission, bounded claims, heartbeat, fenced outcomes/cancel and concurrent expired-lease recovery; not yet used by HTTP/workers |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, GitHub Actions |
 
@@ -81,7 +81,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | --- | --- |
 | `cmd/small-chain/` | Configuration, HTTP server, signals and shutdown |
 | `internal/jobs/` | Job model, state machine, concurrency, retries and tests |
-| `internal/postgres/` | Migrations, durable admission/leases/outcomes and real-DB race tests (not wired to HTTP) |
+| `internal/postgres/` | Migrations, durable admission/leases/outcomes/recovery and real-DB race tests (not wired to HTTP) |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
@@ -109,7 +109,7 @@ For the optional durable admission package, follow the [PostgreSQL setup and tes
 ## Limits and next milestones
 
 - A restart loses all jobs, results and idempotency keys. HTTP 202 in M1 acknowledges memory admission, not durable storage.
-- The runnable server is one process only. Durable heartbeat exists as a tested store primitive, but there is no database worker loop, expired-lease recovery, or exactly-once guarantee.
+- The runnable server is one process only. Durable heartbeat and recovery exist as tested store primitives, but there is no database worker loop, process-kill recovery test, or exactly-once guarantee.
 - Completed records are retained until the process exits. At `-max-jobs`, new submissions receive 503. M2 adds an explicit retention policy.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.

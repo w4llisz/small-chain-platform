@@ -1,11 +1,11 @@
-# PostgreSQL durable core (M2.1–M2.3)
+# PostgreSQL durable core (M2.1–M2.4)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
-with context-aware admission, claiming, heartbeat and outcome operations.
-PostgreSQL now owns durable admission, lease assignment and fenced state writes.
-**The HTTP server and worker still run the M1 memory engine.** There is no
-persistent worker execution, expired-lease recovery or database-backed HTTP 202
-yet.
+with context-aware admission, claiming, heartbeat, outcome and recovery
+operations. PostgreSQL now owns durable admission, lease assignment, fenced
+state writes and expired-lease transitions. **The HTTP server and worker still
+run the M1 memory engine.** There is no persistent worker execution,
+process-level crash-recovery workflow or database-backed HTTP 202 yet.
 
 ## Reproduce
 
@@ -89,9 +89,9 @@ JSON extraction rejects an otherwise preserved escaped NUL.
    the stranded lease.
 
 `(job ID, owner, lease version)` is the fencing token lifecycle mutations match.
-M2.3 consumes that token, but an expired running row is still unavailable until
-recovery is implemented. This distinction is important: safe parallel claiming
-and stale-write rejection exist; crash recovery does not.
+M2.3 consumes that token, and M2.4 provides the explicit sweep that releases an
+expired running row. `ClaimDue` does not silently recover it. This distinction is
+important for scheduling and observing recovery work.
 
 ## Lifecycle protocol
 
@@ -113,6 +113,21 @@ never span task execution, heartbeat intervals or retry delay. Fencing protects
 the job row; external handlers still need idempotency because at-least-once work
 can perform a side effect before a stale result is rejected.
 
+## Recovery protocol
+
+1. `RecoverExpired` validates a batch size (1–100) and retry delay (0–24 hours).
+2. One statement selects expired running rows ordered by `(lease_expires_at, id)`
+   with `FOR UPDATE SKIP LOCKED`. A partial index contains only running leases.
+3. The same statement moves work with budget remaining to `retrying` at database
+   time plus the delay. Exhausted work becomes `failed`.
+4. Both paths record `worker lease expired before completion`, increment the
+   lease version and clear owner/expiry. Old workers then fail every fenced write.
+
+Multiple sweepers can run concurrently without coordinating in Go. The batch
+bound limits lock and return-set size, and no explicit transaction spans another
+statement. This is a recoverable database primitive, not yet a recovery service:
+no database worker periodically invokes it and no process-kill test is claimed.
+
 ## Migration contract
 
 `cmd/migrate` embeds numbered SQL files. It obtains a transaction-level advisory
@@ -122,7 +137,7 @@ same transaction. Concurrent migrators serialize; a failed migration rolls back
 both DDL and history. Unknown/newer or edited history fails closed. The lock
 coordinates this project's migrators, not arbitrary manual SQL changes.
 
-Never edit an applied file. Add `0004_*.sql` for the next change. Only small,
+Never edit an applied file. Add `0005_*.sql` for the next change. Only small,
 transaction-compatible migrations belong here; no `CREATE INDEX CONCURRENTLY`,
 destructive automatic rollback, or production online-migration claim is made.
 
@@ -134,11 +149,13 @@ attempt/version increments, delayed/exhausted/running exclusion, partial-index
 shape, input bounds, cancellation, and skipping an explicitly locked queue head.
 M2.3 cases cover heartbeat, success, delayed retry, attempt exhaustion,
 expired/stale tokens, cancellation fencing/idempotency, migration backfill, and a
-two-connection completion/cancel race. These are correctness tests, not
-throughput measurements. Reconnect is **not** a database crash-recovery or
-worker-recovery test.
+two-connection completion/cancel race. M2.4 cases cover database-time retry
+delay, persisted budget exhaustion, fencing-version advance, the recovery index,
+validation/cancellation, and two concurrent sweepers recovering 24 jobs exactly
+once. These are correctness tests, not throughput measurements. Reconnect and a
+recovery sweep are **not** yet a process-level worker recovery test.
 
-Next: implement expired-lease recovery. A bounded atomic sweep must move expired
-running rows to retrying or failed according to the persisted attempt budget and
-advance the fencing version. Two sweepers must not recover one row twice. Only
-after that invariant is tested should a database worker execute checksum tasks.
+Next: implement a bounded database worker loop for the trusted checksum handler.
+It must execute outside transactions, heartbeat active leases, cancel local work
+after heartbeat/fencing loss, write outcomes with the claim token, and stop new
+claims before draining during shutdown.

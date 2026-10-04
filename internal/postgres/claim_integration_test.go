@@ -85,7 +85,7 @@ func TestClaimDueConcurrent(t *testing.T) {
 	}
 	claimed, err = store.ClaimDue(context.Background(), "worker-c", total, 30*time.Second)
 	if err != nil || len(claimed) != 0 {
-		t.Fatalf("expired running jobs reclaimed before recovery exists: %d, %v", len(claimed), err)
+		t.Fatalf("claim bypassed required recovery sweep: %d, %v", len(claimed), err)
 	}
 }
 
