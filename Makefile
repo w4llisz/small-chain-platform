@@ -24,4 +24,4 @@ migrate:
 	$(GO) run ./cmd/migrate
 test-integration:
 	@test -n "$$TEST_DATABASE_URL" || (echo "TEST_DATABASE_URL is required" >&2; exit 1)
-	$(GO) test -tags=integration -race -count=1 -timeout=90s -v ./internal/postgres
+	$(GO) test -tags=integration -race -count=1 -timeout=90s -v ./internal/postgres ./internal/dbworker

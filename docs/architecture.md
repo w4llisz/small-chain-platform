@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, and M2.4 makes expired leases recoverable. The database worker loop remains a separate increment.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, M2.4 makes expired leases recoverable, and M2.5 drives those operations from a bounded worker package. A process entrypoint remains a separate increment.
 
 ## State machine
 
@@ -104,7 +104,7 @@ while user work runs.
 This is state-write fencing, not exactly-once execution. Fencing cannot roll back
 an external side effect produced before a stale worker's result is rejected.
 
-## M2.4: expired-lease recovery (implemented, not scheduled by a worker)
+## M2.4: expired-lease recovery (implemented)
 
 Migration `0004_recovery.sql` adds a partial `(lease_expires_at, id)` index for
 running rows. `RecoverExpired` validates a batch and retry-delay bound, then uses
@@ -117,11 +117,35 @@ The statement is its own short transaction: no task execution or backoff occurs
 while locks are held. Concurrent sweepers skip each other's rows, and later
 sweeps ignore the transitioned rows. A stale worker cannot heartbeat or finish
 after recovery. Recovery is deliberately explicit rather than hidden inside
-`ClaimDue`, so a future worker can schedule and observe it independently.
+`ClaimDue`, so the M2.5 worker schedules and can later observe it independently.
 
-This completes the database transition needed after a worker crash, but not the
-end-to-end behavior: no running process periodically calls the sweep yet, and no
-process-kill test is claimed until the database worker loop exists.
+This completes the database transition needed after a worker crash. M2.5 calls
+the sweep periodically; a process-kill test is still deferred until the worker
+has a command entrypoint.
+
+## M2.5: bounded database worker (implemented as a package)
+
+`internal/dbworker.Worker` owns one polling/recovery loop and a semaphore-sized
+set of in-flight attempts. It asks `ClaimDue` for no more than its free slots,
+so polling never creates an unbounded local queue. A claim transaction is fully
+committed before the executor starts. Heartbeats and final writes are separate,
+bounded database operations; no transaction spans task execution or retry wait.
+
+Each executor receives the persisted attempt timeout and must cooperate with
+context cancellation. Losing a heartbeat cancels that context, waits for the
+trusted handler to return, and deliberately writes no result. The recovery path
+can then advance the fencing version and retry the work. Success, explicitly
+retryable error, and permanent error take distinct fenced store paths; panic text
+is not persisted. Retry delay uses capped exponential equal jitter.
+
+Canceling `Run` stops polling and recovery before waiting for already claimed
+attempts. Those attempts retain their independent deadlines and heartbeats while
+draining; this avoids abandoning a committed lease merely because the process
+received a graceful shutdown signal. Unit tests use the race detector to prove
+the concurrency bound, drain order and lease-loss behavior. A PostgreSQL test
+executes a task longer than its initial lease, retries a transient failure and
+recovers an expired claim. The package is not yet exposed by a command, so this
+is not a process-kill recovery claim.
 
 ## M2 remainder: PostgreSQL as the durable queue (planned)
 
@@ -134,10 +158,10 @@ Use partial indexes restricted to eligible queued/retrying states and running le
 Claim protocol:
 
 1. **Implemented except events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, and set expiry. Commit before execution.
-2. **Store operation implemented; worker integration planned:** execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
+2. **Implemented in the worker package:** execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
 3. **Implemented except events:** finish with a conditional update on ID, owner, version, running state and unexpired lease. Stale completion affects zero rows.
 4. **Implemented as store operations:** on attempt failure, set `available_at` and clear the lease atomically. A bounded concurrent-safe sweep recovers expired leases using the persisted attempt limit and advances the fencing version.
-5. **Store operation implemented; worker polling planned:** on cancellation, persist canceled state and increment lease version. Stale results cannot overwrite canceled state; cancellation cannot undo an external side effect.
+5. **Store and worker fencing implemented:** on cancellation, persist canceled state and increment lease version. Heartbeat loss stops the worker from writing a late result; cancellation cannot undo an external side effect.
 
 PostgreSQL describes `SKIP LOCKED` as useful for queue-like consumers, with an inconsistent view unsuitable for general-purpose reads: [official SELECT documentation](https://www.postgresql.org/docs/current/sql-select.html). Use it for task claims, not complete user-facing job lists.
 

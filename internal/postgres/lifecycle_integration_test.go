@@ -111,6 +111,28 @@ func TestFailAttemptRetriesThenExhausts(t *testing.T) {
 	}
 }
 
+func TestFailPermanentStopsBeforeAttemptBudget(t *testing.T) {
+	store, _ := database(t)
+	migrate(t, store)
+	claim := submitAndClaim(t, store, "permanent", jobs.Spec{
+		Kind: "demo.checksum", Payload: "permanent", MaxAttempts: 5,
+	})
+
+	failed, err := store.FailPermanent(context.Background(), claim, "invalid work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != jobs.Failed || failed.Attempts != 1 || failed.Error != "invalid work" {
+		t.Fatalf("permanently failed job: %+v", failed)
+	}
+	if _, err := store.Complete(context.Background(), claim, "late"); !errors.Is(err, ErrStaleLease) {
+		t.Fatalf("released lease completed: %v", err)
+	}
+	if claims, err := store.ClaimDue(context.Background(), "worker-later", 1, time.Minute); err != nil || len(claims) != 0 {
+		t.Fatalf("permanently failed job reclaimed: %+v, %v", claims, err)
+	}
+}
+
 func TestExpiredLeaseCannotMutate(t *testing.T) {
 	store, _ := database(t)
 	migrate(t, store)
@@ -254,6 +276,9 @@ func TestLifecycleValidationAndCancellation(t *testing.T) {
 	}
 	if _, err := store.FailAttempt(context.Background(), valid, "", 0); !errors.Is(err, jobs.ErrInvalid) {
 		t.Fatalf("empty failure: %v", err)
+	}
+	if _, err := store.FailPermanent(context.Background(), valid, ""); !errors.Is(err, jobs.ErrInvalid) {
+		t.Fatalf("empty permanent failure: %v", err)
 	}
 	if _, err := store.FailAttempt(context.Background(), valid, "failure", -time.Nanosecond); !errors.Is(err, jobs.ErrInvalid) {
 		t.Fatalf("negative retry: %v", err)

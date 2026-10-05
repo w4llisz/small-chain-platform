@@ -21,9 +21,10 @@ M1 is a runnable baseline, not yet the full flagship portfolio. **M2 is the next
    - **M2.2 implemented:** persisted attempt budgets, availability and lease owner/version/expiry; bounded batch `ClaimDue` uses `FOR UPDATE SKIP LOCKED`, database time and a partial ready index. Real-DB tests use two pools to claim 24 unique jobs concurrently, prove a locked head row does not block the next job, and exclude delayed/exhausted/running work. Claiming produces fencing tokens but does not yet execute or recover jobs.
    - **M2.3 implemented:** bounded heartbeat, success and failure/retry writes match the exact `(id, owner, lease_version, running, unexpired)` lease and use database time. Retry delay and lease release are one atomic update. Operator cancellation increments the version before clearing a lease. Real-DB tests prove stale/expired tokens cannot mutate state, retries exhaust the persisted budget, cancellation is idempotent, and a completion/cancel race has one terminal winner. The outcome migration also backfills rows created under the older state schema before enforcing result/error invariants.
    - **M2.4 implemented:** a bounded, single-statement `RecoverExpired` sweep selects expired running rows in lease order with `FOR UPDATE SKIP LOCKED`, moves them to delayed retry or failed according to the persisted attempt budget, advances the fencing version and clears the lease. A partial index targets only running leases. Real-DB tests prove two concurrent sweepers recover 24 jobs once each, live leases are ignored, retry budget survives recovery, and every stale completion is rejected.
-   - **Next small task — M2.5:** database worker loop for the trusted checksum handler. Acceptance: bounded polling claims work, execution happens outside transactions, heartbeat loss cancels local execution, outcomes use the fencing token, and shutdown stops claims before draining in-flight attempts.
-   - **Later M2 steps:** database-backed HTTP admission; process-kill recovery test; bounded admission and explicit retention/replay policy; append-only events. Each step needs real-database tests before being marked complete.
-2. `feat/leased-workers`: wire the implemented claim/heartbeat/outcome/recovery primitives into worker mode, then add a two-process crash test.
+   - **M2.5 implemented:** `internal/dbworker` polls only for available concurrency, executes the trusted handler after claim transactions commit, renews leases, runs bounded recovery sweeps, and persists success/retry/permanent failure with the current fencing token. Heartbeat loss cancels local execution without writing a late outcome. Shutdown stops the poll/recovery loop and drains only already claimed attempts. Unit tests cover the concurrency bound, panic isolation, retry classification, lease loss and drain order; the real-DB case proves a long attempt stays alive through heartbeat, a transient failure retries, and an expired claim recovers.
+   - **Next small task — M2.6:** add an explicit database-worker command mode and a process-level kill/restart recovery test. Acceptance: two real processes use distinct owners, killing one leaves no permanently running job, the survivor retries within the persisted budget, and a stale token cannot finish.
+   - **Later M2 steps:** database-backed HTTP admission; bounded admission and explicit retention/replay policy; append-only events. Each step needs real-database tests before being marked complete.
+2. `feat/leased-workers`: expose the implemented worker package through an explicit command mode, then add a two-process crash test.
 3. `feat/operations-console`: list/filter API, React and Playwright. Optional manual retry creates a new job/key with explicit lineage; never mutate a terminal record.
 4. `feat/observability-and-evidence`: Compose with PostgreSQL/metrics/traces, dashboard, load generator and measured report.
 
@@ -50,7 +51,7 @@ Overload should show bounded queues/records and admission rejection. Worker-kill
 3. Inject two transient failures; inspect attempts, logs and metrics.
 4. Saturate a small queue; demonstrate rejection and recovery.
 5. Cancel and shut down; point to tests proving terminal immutability.
-6. After the database worker is integrated, kill it and explain lease recovery/fencing.
+6. After the database worker command is integrated, kill it and explain lease recovery/fencing.
 
 ## Resume wording
 

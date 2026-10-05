@@ -1,11 +1,12 @@
-# PostgreSQL durable core (M2.1–M2.4)
+# PostgreSQL durable core (M2.1–M2.5)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
-operations. PostgreSQL now owns durable admission, lease assignment, fenced
-state writes and expired-lease transitions. **The HTTP server and worker still
-run the M1 memory engine.** There is no persistent worker execution,
-process-level crash-recovery workflow or database-backed HTTP 202 yet.
+operations. `internal/dbworker` composes them into a bounded polling worker for
+the trusted checksum executor. PostgreSQL owns durable admission, lease
+assignment, fenced state writes and expired-lease transitions. **The HTTP server
+and default command still run the M1 memory engine.** There is no database worker
+entrypoint, process-level crash-recovery workflow or database-backed HTTP 202 yet.
 
 ## Reproduce
 
@@ -101,6 +102,8 @@ important for scheduling and observing recovery work.
 - `FailAttempt` atomically stores a bounded error, clears the lease and either
   schedules `retrying` from database time or marks the job `failed` when its
   persisted attempt budget is exhausted.
+- `FailPermanent` stores a non-retryable error and immediately fails the job,
+  regardless of unused attempt budget.
 - `Cancel` is an authoritative operator transition for queued, running and
   retrying work. It increments the lease version before clearing lease fields,
   is idempotent after cancellation, and cannot overwrite a completed terminal
@@ -125,8 +128,23 @@ can perform a side effect before a stale result is rejected.
 
 Multiple sweepers can run concurrently without coordinating in Go. The batch
 bound limits lock and return-set size, and no explicit transaction spans another
-statement. This is a recoverable database primitive, not yet a recovery service:
-no database worker periodically invokes it and no process-kill test is claimed.
+statement. The database worker invokes this sweep at startup and periodically.
+No process-kill test is claimed until that worker has a command entrypoint.
+
+## Worker protocol
+
+`internal/dbworker.Worker` claims only as many rows as it has free execution
+slots and executes after `ClaimDue` commits. It heartbeats each active lease,
+uses the current claim token for every outcome, and schedules bounded recovery
+sweeps independently from polling. A lost heartbeat cancels local work and
+suppresses its outcome; the handler contract requires prompt context handling.
+
+On graceful cancellation the polling/recovery loop stops before waiting for
+in-flight attempts. Accepted attempts continue their heartbeats and remain
+bounded by their persisted timeout while draining. Retryable failures use capped
+exponential equal jitter; permanent failures and recovered panics stop before
+unused attempt budget. The package is deliberately separate from the default
+M1 command until a process-level recovery test can verify its lifecycle.
 
 ## Migration contract
 
@@ -152,10 +170,12 @@ expired/stale tokens, cancellation fencing/idempotency, migration backfill, and 
 two-connection completion/cancel race. M2.4 cases cover database-time retry
 delay, persisted budget exhaustion, fencing-version advance, the recovery index,
 validation/cancellation, and two concurrent sweepers recovering 24 jobs exactly
-once. These are correctness tests, not throughput measurements. Reconnect and a
-recovery sweep are **not** yet a process-level worker recovery test.
+once. M2.5 adds permanent-failure fencing and an end-to-end worker case: a task
+longer than its initial lease succeeds through heartbeat, an injected transient
+failure retries, and an expired claim recovers. These are correctness tests, not
+throughput measurements. The integration case runs goroutines against a real
+database, not separate OS processes.
 
-Next: implement a bounded database worker loop for the trusted checksum handler.
-It must execute outside transactions, heartbeat active leases, cancel local work
-after heartbeat/fencing loss, write outcomes with the claim token, and stop new
-claims before draining during shutdown.
+Next: expose the database worker through an explicit command mode and kill one
+of two worker processes in a recovery test. That is the gate for claiming
+process-level crash recovery.

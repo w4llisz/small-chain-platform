@@ -95,7 +95,8 @@ func Retryable(err error) error {
 	return temporaryError{err: err}
 }
 
-func isRetryable(err error) bool {
+// IsRetryable reports whether an executor marked an error safe to retry.
+func IsRetryable(err error) bool {
 	var temporary temporaryError
 	return errors.As(err, &temporary)
 }

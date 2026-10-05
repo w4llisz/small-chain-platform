@@ -90,3 +90,20 @@ input/cancellation behavior, and two independent sweepers recovering 24 rows
 exactly once. This proves the recovery transition, not a process-kill workflow:
 the database worker loop is still planned. No throughput or exactly-once claim is
 made.
+
+## M2.5 database worker increment — 2026-10-05
+
+Local, Linux amd64 with Go 1.27.1: `make verify` passed formatting, vet, all
+unit/HTTP tests under the race detector, static build and the real-process M1
+smoke workflow. The new `internal/dbworker` unit suite reported 80.5% statement
+coverage and exercises free-slot polling, the concurrency bound, success,
+retryable/permanent outcomes, panic containment, heartbeat-loss cancellation,
+UTF-8 error bounds, and shutdown-before-drain ordering. The race detector found
+and the implementation fixed a claim/executor read-write race during development.
+
+The integration-tagged packages are compiled locally before submission. A
+candidate-branch CI run is the real PostgreSQL 16 gate and runs both the store
+and worker suites with `-race`. Its new scenario proves lease renewal for an
+attempt longer than the initial lease, persisted retry, and expired-claim
+recovery. This does not yet prove OS-process kill/restart behavior, durable HTTP
+admission, exactly-once effects or throughput.

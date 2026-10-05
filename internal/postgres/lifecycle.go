@@ -91,6 +91,23 @@ WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
 RETURNING `+jobColumns, retryAfter.Microseconds(), message)
 }
 
+// FailPermanent records a non-retryable attempt error while the exact lease is
+// current. It does not consume the remaining persisted attempt budget.
+func (s *Store) FailPermanent(ctx context.Context, claim Claim, message string) (jobs.Job, error) {
+	if err := validateClaim(claim); err != nil {
+		return jobs.Job{}, err
+	}
+	if err := validateMessage(message); err != nil {
+		return jobs.Job{}, err
+	}
+	return s.finish(ctx, claim, `UPDATE jobs
+SET state = 'failed', result = NULL, error = $4,
+    lease_owner = NULL, lease_expires_at = NULL, updated_at = statement_timestamp()
+WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
+  AND state = 'running' AND lease_expires_at > statement_timestamp()
+RETURNING `+jobColumns, message)
+}
+
 // Cancel is an authoritative operator transition, not a worker lease action.
 // It increments the version before clearing a running lease, fencing its worker.
 func (s *Store) Cancel(ctx context.Context, id, reason string) (jobs.Job, error) {

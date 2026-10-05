@@ -225,7 +225,7 @@ func (e *Engine) run(id string) {
 			e.mu.Unlock()
 			return
 		}
-		if !isRetryable(err) || attempt == spec.MaxAttempts {
+		if !IsRetryable(err) || attempt == spec.MaxAttempts {
 			e.transition(r, Failed, err.Error())
 			e.mu.Unlock()
 			return
