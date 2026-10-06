@@ -1,5 +1,6 @@
-// Package postgres implements durable admission. It is not yet a scheduler:
-// the HTTP service and workers still use the M1 in-memory engine.
+// Package postgres implements durable admission and leased scheduling. The HTTP
+// service still uses the M1 in-memory engine; cmd/small-chain-worker consumes
+// this store through the bounded database worker.
 package postgres
 
 import (

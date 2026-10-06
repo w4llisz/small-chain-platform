@@ -1,12 +1,12 @@
-# PostgreSQL durable core (M2.1–M2.5)
+# PostgreSQL durable core (M2.1–M2.6)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
 operations. `internal/dbworker` composes them into a bounded polling worker for
-the trusted checksum executor. PostgreSQL owns durable admission, lease
-assignment, fenced state writes and expired-lease transitions. **The HTTP server
-and default command still run the M1 memory engine.** There is no database worker
-entrypoint, process-level crash-recovery workflow or database-backed HTTP 202 yet.
+the trusted checksum executor, and `cmd/small-chain-worker` runs it as an
+independent process. PostgreSQL owns durable admission, lease assignment, fenced
+state writes and expired-lease transitions. **The HTTP server still runs the M1
+memory engine.** There is no database-backed HTTP 202 or retention policy yet.
 
 ## Reproduce
 
@@ -21,6 +21,7 @@ docker exec small-chain-postgres pg_isready -U small_chain -d small_chain_test
 export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
 make migrate
 make migrate  # no-op: checksums still checked
+go run ./cmd/small-chain-worker -owner=local-worker
 export TEST_DATABASE_URL="$DATABASE_URL"
 make test-integration
 # Stop only this disposable container when finished:
@@ -32,8 +33,10 @@ real connection string. Migration commands require schema-creation privileges;
 tests create a random schema per case and drop only that schema at cleanup.
 The test database user must be able to create schemas. CI provisions the same
 PostgreSQL major version and runs the integration suite with the race detector.
-`make verify` remains usable without a database. The explicit
-`make test-integration` target **fails**, rather than skips, without its URL.
+Each live worker needs a unique `-owner`; migrations must finish before workers
+start. `DATABASE_URL` is intentionally not accepted as a flag. `make verify`
+remains usable without a database. The explicit `make test-integration` target
+**fails**, rather than skips, without its URL.
 
 ## Admission protocol
 
@@ -129,7 +132,7 @@ can perform a side effect before a stale result is rejected.
 Multiple sweepers can run concurrently without coordinating in Go. The batch
 bound limits lock and return-set size, and no explicit transaction spans another
 statement. The database worker invokes this sweep at startup and periodically.
-No process-kill test is claimed until that worker has a command entrypoint.
+The M2.6 process test verifies the sweep after killing a lease owner.
 
 ## Worker protocol
 
@@ -143,8 +146,8 @@ On graceful cancellation the polling/recovery loop stops before waiting for
 in-flight attempts. Accepted attempts continue their heartbeats and remain
 bounded by their persisted timeout while draining. Retryable failures use capped
 exponential equal jitter; permanent failures and recovered panics stop before
-unused attempt budget. The package is deliberately separate from the default
-M1 command until a process-level recovery test can verify its lifecycle.
+unused attempt budget. `cmd/small-chain-worker` maps SIGINT/SIGTERM to this drain
+path; SIGKILL deliberately exercises lease expiry instead.
 
 ## Migration contract
 
@@ -173,9 +176,10 @@ validation/cancellation, and two concurrent sweepers recovering 24 jobs exactly
 once. M2.5 adds permanent-failure fencing and an end-to-end worker case: a task
 longer than its initial lease succeeds through heartbeat, an injected transient
 failure retries, and an expired claim recovers. These are correctness tests, not
-throughput measurements. The integration case runs goroutines against a real
-database, not separate OS processes.
+throughput measurements. M2.6 adds two real race-instrumented worker processes:
+worker A is killed after claiming, worker B recovers and completes attempt two,
+the fencing version follows claim → recovery → reclaim, and A's captured token
+is rejected. This is process-level recovery evidence, not an exactly-once claim.
 
-Next: expose the database worker through an explicit command mode and kill one
-of two worker processes in a recovery test. That is the gate for claiming
-process-level crash recovery.
+Next: define bounded retention and idempotency replay before the PostgreSQL store
+is exposed through HTTP.

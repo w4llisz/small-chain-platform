@@ -62,21 +62,29 @@ type Worker struct {
 	wg      sync.WaitGroup
 }
 
-func New(cfg Config, store LeaseStore, execute jobs.Executor, logger *slog.Logger) (*Worker, error) {
+// ValidateConfig checks worker bounds without opening a database connection.
+func ValidateConfig(cfg Config) error {
 	if !validOwner.MatchString(cfg.Owner) {
-		return nil, errors.New("worker owner must be 1..128 ASCII letters, digits, '.', '_', ':' or '-'")
+		return errors.New("worker owner must be 1..128 ASCII letters, digits, '.', '_', ':' or '-'")
 	}
 	if cfg.Concurrency < 1 || cfg.Concurrency > 100 || cfg.RecoveryBatch < 1 || cfg.RecoveryBatch > 100 {
-		return nil, errors.New("worker concurrency and recovery batch must be between 1 and 100")
+		return errors.New("worker concurrency and recovery batch must be between 1 and 100")
 	}
 	if cfg.PollInterval <= 0 || cfg.RecoveryInterval <= 0 || cfg.LeaseDuration < time.Second || cfg.LeaseDuration > 15*time.Minute {
-		return nil, errors.New("poll/recovery intervals must be positive and lease must be between 1 second and 15 minutes")
+		return errors.New("poll/recovery intervals must be positive and lease must be between 1 second and 15 minutes")
 	}
 	if cfg.HeartbeatInterval <= 0 || cfg.HeartbeatInterval > cfg.LeaseDuration/2 {
-		return nil, errors.New("heartbeat interval must be positive and at most half the lease duration")
+		return errors.New("heartbeat interval must be positive and at most half the lease duration")
 	}
 	if cfg.RetryBase <= 0 || cfg.RetryMax < cfg.RetryBase || cfg.RetryMax > 24*time.Hour {
-		return nil, errors.New("retry base must be positive and retry max must be between base and 24 hours")
+		return errors.New("retry base must be positive and retry max must be between base and 24 hours")
+	}
+	return nil
+}
+
+func New(cfg Config, store LeaseStore, execute jobs.Executor, logger *slog.Logger) (*Worker, error) {
+	if err := ValidateConfig(cfg); err != nil {
+		return nil, err
 	}
 	if store == nil || execute == nil || logger == nil {
 		return nil, errors.New("store, executor and logger are required")

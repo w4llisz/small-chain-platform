@@ -30,18 +30,35 @@ Metrics reset on restart; state gauges count retained records. M4 adds wait-time
 
 `make smoke` automates results/retry/idempotency and both shutdown paths against the real binary. `go test -race ./...` exercises parallel admission and transitions.
 
+## Durable worker processes
+
+Apply migrations once with the schema-owner credentials, then start each worker
+with a unique owner:
+
+```sh
+export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
+make migrate
+go run ./cmd/small-chain-worker -owner=worker-a
+```
+
+The worker does not run DDL and never prints the DSN. SIGTERM stops new claims
+and drains accepted attempts. SIGKILL leaves the current lease for another
+worker's recovery sweep. `make test-integration` automates the two-process kill
+case against a disposable schema; it does not use the memory HTTP API.
+
 ## Troubleshooting
 
 - **429:** inspect queue and retrying jobs. Reduce load; adjust workers using measured resource use. More queue capacity only permits more waiting.
 - **503 record_capacity:** export needed results, then restart the demo. All jobs/keys are lost. Durable retention is M2.
 - **Stuck work:** inspect timeout/attempt/state. Executors must honor context; Go cannot preempt arbitrary task functions.
-- **Missing records after restart:** expected in M1; crash recovery is not implemented.
+- **Missing HTTP records after restart:** expected in the M1 API. The separately started PostgreSQL worker recovers only jobs durably admitted to its store.
+- **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Missing traces/percentiles:** planned, not present; duration is sum/count only.
 
 ## CI
 
 The workflow runs on PRs, main and feature-branch pushes, with read-only contents permission, pinned action commits and no secrets. It checks formatting, vet, race tests, a short fuzz run, static build, process smoke and container build. Dependabot tracks actions/Docker updates.
 
-Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 adds PostgreSQL and recovery tests; M3 adds type checking/Playwright; M4 adds reproducible load runs. Establish a baseline before gating on performance thresholds.
+Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 adds reproducible load runs. Establish a baseline before gating on performance thresholds.
 
 Authentication, authorization, transport security and resource/connection limits are prerequisites for public hosting, outside the local demonstration's M1 scope.

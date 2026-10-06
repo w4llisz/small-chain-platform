@@ -107,3 +107,22 @@ and worker suites with `-race`. Its new scenario proves lease renewal for an
 attempt longer than the initial lease, persisted retry, and expired-claim
 recovery. This does not yet prove OS-process kill/restart behavior, durable HTTP
 admission, exactly-once effects or throughput.
+
+## M2.6 process recovery increment — 2026-10-06
+
+Local, Linux amd64 with Go 1.27.1: `make verify` passed formatting, vet, race
+tests, both static binaries and the existing real-process M1 smoke workflow.
+The worker command reported 56.8% statement coverage from argument validation;
+the process lifecycle is exercised externally. A 10-second fuzz run passed
+272,879 executions. The integration-tagged packages and process test compile and
+pass vet locally; database execution remains gated by candidate CI with a
+disposable PostgreSQL 16 schema.
+
+The new integration case builds the worker with the Go race detector, starts two
+Linux child processes with distinct owners, waits until worker A has a persisted
+lease, starts worker B, then kills A with SIGKILL. It requires B to recover and
+complete the job on attempt two, checks the fencing-version sequence, rejects
+A's captured completion token, and verifies B exits cleanly on SIGTERM. This is
+process recovery evidence for the trusted checksum handler. It does not prove
+durable HTTP admission, arbitrary external side-effect idempotency, exactly-once
+execution or performance.

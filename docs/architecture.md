@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, M2.4 makes expired leases recoverable, and M2.5 drives those operations from a bounded worker package. A process entrypoint remains a separate increment.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, M2.4 makes expired leases recoverable, M2.5 drives those operations from a bounded worker package, and M2.6 proves that protocol across killed OS processes.
 
 ## State machine
 
@@ -120,8 +120,7 @@ after recovery. Recovery is deliberately explicit rather than hidden inside
 `ClaimDue`, so the M2.5 worker schedules and can later observe it independently.
 
 This completes the database transition needed after a worker crash. M2.5 calls
-the sweep periodically; a process-kill test is still deferred until the worker
-has a command entrypoint.
+the sweep periodically, and M2.6 verifies it after killing a worker process.
 
 ## M2.5: bounded database worker (implemented as a package)
 
@@ -144,8 +143,29 @@ draining; this avoids abandoning a committed lease merely because the process
 received a graceful shutdown signal. Unit tests use the race detector to prove
 the concurrency bound, drain order and lease-loss behavior. A PostgreSQL test
 executes a task longer than its initial lease, retries a transient failure and
-recovers an expired claim. The package is not yet exposed by a command, so this
-is not a process-kill recovery claim.
+recovers an expired claim. M2.6 exposes the package through a dedicated command
+and adds the process-level recovery evidence.
+
+## M2.6: worker process and crash recovery (implemented)
+
+`cmd/small-chain-worker` is a narrow process boundary around the durable worker.
+Every live process requires a distinct stable owner; concurrency, polling,
+leases, heartbeats, retry and recovery bounds are explicit flags. The connection
+string is accepted only through `DATABASE_URL`, so credentials do not appear in
+the command line. Migrations remain a separate command and privilege boundary.
+
+SIGTERM cancels polling and recovery before the worker drains already claimed
+attempts. SIGKILL cannot run cleanup, so the row remains `running` until its
+database-time lease expires. Another live worker's bounded recovery sweep then
+changes it to `retrying`, advances the fencing version and reclaims it as the
+next persisted attempt.
+
+The integration test builds a race-instrumented worker binary, starts two real
+Linux child processes against a disposable PostgreSQL schema, captures worker
+A's fencing token, and sends A SIGKILL. Worker B recovers the lease and completes
+attempt two. The test also submits A's captured token after completion and
+requires `ErrStaleLease`. This proves process-level scheduler recovery, not
+exactly-once external effects or durable HTTP admission.
 
 ## M2 remainder: PostgreSQL as the durable queue (planned)
 

@@ -18,7 +18,7 @@ import (
 )
 
 func TestPostgresWorkerRenewsRetriesAndRecovers(t *testing.T) {
-	store, conn := workerDatabase(t)
+	store, conn, _ := workerDatabase(t)
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestPostgresWorkerRenewsRetriesAndRecovers(t *testing.T) {
 }
 
 // Every integration test owns a disposable schema; it never truncates shared data.
-func workerDatabase(t *testing.T) (*postgres.Store, *pgx.Conn) {
+func workerDatabase(t *testing.T) (*postgres.Store, *pgx.Conn, string) {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -141,5 +141,5 @@ func workerDatabase(t *testing.T) (*postgres.Store, *pgx.Conn) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close(context.Background()) })
-	return store, conn
+	return store, conn, u.String()
 }

@@ -63,7 +63,7 @@ jobs:
           cache: true
       - name: Verify module checksums
         run: go mod verify
-      - name: Test durable admission against PostgreSQL
+      - name: Test durable scheduling and process recovery
         run: make test-integration
       - name: Exercise migration command twice
         env:
