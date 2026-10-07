@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 )
@@ -80,8 +81,9 @@ func decodeSpec(encoded []byte, spec *jobs.Spec) error {
 }
 
 // Submit persists one normalized request per key. The bool identifies replay.
-// Keys are retained indefinitely in this admission-only increment; no deletion
-// path runs concurrently. A commit error is ambiguous: retry the same key.
+// Existing keys replay even at capacity. Terminal keys remain stable for at
+// least the configured replay window; after cleanup, reusing a key creates new
+// work. A commit error is ambiguous: retry the same key.
 func (s *Store) Submit(ctx context.Context, key string, spec jobs.Spec) (jobs.Job, bool, error) {
 	if err := jobs.ValidateKey(key); err != nil {
 		return jobs.Job{}, false, err
@@ -107,14 +109,37 @@ func (s *Store) Submit(ctx context.Context, key string, spec jobs.Spec) (jobs.Jo
 		return jobs.Job{}, false, fmt.Errorf("begin admission: %w", err)
 	}
 	defer rollback(tx)
-	j, err := readJob(tx.QueryRow(ctx, `INSERT INTO jobs (id, idempotency_key, request_fingerprint, spec, max_attempts)
+
+	// Lock a visible key before attempting an insert. Cleanup then cannot
+	// remove an old terminal replay between this read and commit.
+	j, err := readJob(tx.QueryRow(ctx, `SELECT `+jobColumns+`
+ FROM jobs WHERE idempotency_key = $1 FOR UPDATE`, key))
+	if err == nil {
+		if j.Spec != spec {
+			return jobs.Job{}, false, jobs.ErrConflict
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return jobs.Job{}, false, fmt.Errorf("commit admission replay: %w", err)
+		}
+		return j, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return jobs.Job{}, false, fmt.Errorf("read admission key: %w", err)
+	}
+
+	j, err = readJob(tx.QueryRow(ctx, `INSERT INTO jobs (id, idempotency_key, request_fingerprint, spec, max_attempts)
  VALUES ($1, $2, $3, $4, $5) ON CONFLICT (idempotency_key) DO NOTHING RETURNING `+jobColumns,
 		id, key, fingerprint[:], string(encoded), spec.MaxAttempts))
+	if isCapacityError(err) {
+		return jobs.Job{}, false, jobs.ErrCapacity
+	}
 	replay := errors.Is(err, pgx.ErrNoRows)
 	if replay {
-		// A new READ COMMITTED statement sees the winning concurrent commit. A
-		// single CTE/UNION SELECT could miss it in the INSERT statement's snapshot.
-		j, err = readJob(tx.QueryRow(ctx, `SELECT `+jobColumns+` FROM jobs WHERE idempotency_key = $1`, key))
+		// A new READ COMMITTED statement sees and locks the winning concurrent
+		// commit. Newly inserted rows cannot be retention-eligible, so cleanup
+		// cannot remove the winner before this statement obtains its row lock.
+		j, err = readJob(tx.QueryRow(ctx, `SELECT `+jobColumns+`
+ FROM jobs WHERE idempotency_key = $1 FOR UPDATE`, key))
 		if err == nil && j.Spec != spec {
 			return jobs.Job{}, false, jobs.ErrConflict
 		}
@@ -126,6 +151,11 @@ func (s *Store) Submit(ctx context.Context, key string, spec jobs.Spec) (jobs.Jo
 		return jobs.Job{}, false, fmt.Errorf("commit admission (retry same key): %w", err)
 	}
 	return j, replay, nil
+}
+
+func isCapacityError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == "admission_control_capacity"
 }
 
 func (s *Store) Get(ctx context.Context, id string) (jobs.Job, error) {

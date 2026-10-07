@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, M2.4 makes expired leases recoverable, M2.5 drives those operations from a bounded worker package, and M2.6 proves that protocol across killed OS processes.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, M2.4 makes expired leases recoverable, M2.5 drives those operations from a bounded worker package, M2.6 proves that protocol across killed OS processes, and M2.7 bounds durable admission and terminal history.
 
 ## State machine
 
@@ -167,11 +167,38 @@ attempt two. The test also submits A's captured token after completion and
 requires `ErrStaleLease`. This proves process-level scheduler recovery, not
 exactly-once external effects or durable HTTP admission.
 
+## M2.7: bounded durable admission and replay (implemented)
+
+Migration `0005_retention.sql` creates a singleton database policy with a
+retained-job count, cap and minimum replay window. `AFTER INSERT` and `AFTER
+DELETE` triggers update that row transactionally. The insert trigger advances
+the counter only when a slot exists and raises a named check violation otherwise;
+the Go store maps only that named violation to `jobs.ErrCapacity`. Because the
+trigger runs after insertion, `ON CONFLICT DO NOTHING` replays do not consume a
+slot. The database default is 10,000 records and 24 hours; an upgrade with more
+than 10,000 existing rows preserves all rows and starts at its current count.
+
+Submission first locks an existing idempotency-key row. This prevents terminal
+cleanup from removing a visible replay before its transaction commits. If the
+key was initially absent, concurrent creators still use the unique constraint
+and a new READ COMMITTED statement. Newly created rows cannot be cleanup-eligible
+inside the minimum one-minute replay window. Existing keys therefore replay or
+conflict even while the store is full; capacity applies only to new work.
+
+`PurgeTerminal` locks the policy for a stable window, then deletes at most 1,000
+eligible rows in deterministic `(updated_at, id)` order with `FOR UPDATE SKIP
+LOCKED`. Only succeeded, failed and canceled rows can match. The window starts at
+the terminal transition's database `updated_at`; queued, running and retrying
+rows are never age-deleted. The window is a minimum guarantee, not an exact TTL:
+after it passes the key still replays until a purge removes it, and reuse after
+removal creates a new job ID. Cleanup is explicit in M2.7; the M2.8 server will
+own its schedule.
+
 ## M2 remainder: PostgreSQL as the durable queue (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 
-Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. Append-only `job_events` and retention remain planned. Tenant scoping is deferred until authentication exists.
+Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. A singleton row bounds retained records and defines replay retention. Append-only `job_events` remain planned. Tenant scoping is deferred until authentication exists.
 
 Use partial indexes restricted to eligible queued/retrying states and running leases, with deterministic `(available_at, id)` claim ordering. Validate with `EXPLAIN (ANALYZE, BUFFERS)` on representative distributions before claiming an optimization. Bound the Go connection pool and transaction/statement timeouts; never hold a database transaction during task execution or backoff.
 

@@ -126,3 +126,14 @@ A's captured completion token, and verifies B exits cleanly on SIGTERM. This is
 process recovery evidence for the trusted checksum handler. It does not prove
 durable HTTP admission, arbitrary external side-effect idempotency, exactly-once
 execution or performance.
+
+## M2.7 bounded admission and retention increment — 2026-10-07
+
+Local, Linux amd64 with Go 1.27.1: `make verify`, integration-tag compilation,
+integration-tag vet and module verification are required before submission. The
+real PostgreSQL 16 suite remains a candidate-branch CI gate. New database cases
+configure a two-record cap, prove replays/conflicts still work while new keys are
+rejected, delete only terminal history beyond the replay window, reuse a key only
+after deletion, and race 16 admissions against cleanup through two pools while
+checking both the cap and retained counter. These are correctness checks; no
+throughput, production retention cadence or durable HTTP claim is made.

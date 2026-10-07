@@ -1,12 +1,13 @@
-# PostgreSQL durable core (M2.1–M2.6)
+# PostgreSQL durable core (M2.1–M2.7)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
 operations. `internal/dbworker` composes them into a bounded polling worker for
 the trusted checksum executor, and `cmd/small-chain-worker` runs it as an
 independent process. PostgreSQL owns durable admission, lease assignment, fenced
-state writes and expired-lease transitions. **The HTTP server still runs the M1
-memory engine.** There is no database-backed HTTP 202 or retention policy yet.
+state writes, expired-lease transitions, a shared admission cap and terminal
+retention. **The HTTP server still runs the M1 memory engine.** There is no
+database-backed HTTP 202 yet, and terminal cleanup is not scheduled by a process.
 
 ## Reproduce
 
@@ -58,12 +59,11 @@ remains usable without a database. The explicit `make test-integration` target
 5. Return success only after commit. A connection failure during commit has an
    ambiguous outcome; retry the **same key**, never silently generate a new one.
 
-There is no deletion/expiration path in this increment. Keys and jobs persist
-indefinitely, including across client/pool reconnects; admission has no retention
-cap yet. Before wiring this store into the HTTP API, add a bounded admission and
-retention policy with a documented replay window. Concurrent deletion would
-require revisiting the two-statement replay protocol. The prototype is not an
-unbounded public endpoint.
+M2.7 revises the replay transaction for concurrent cleanup: it first selects and
+locks a visible key, then inserts only when absent. Concurrent creators still use
+the unique constraint and a fresh READ COMMITTED statement. A new row is younger
+than the minimum replay window, so cleanup cannot remove that winner before the
+fresh read. Existing keys remain replayable at capacity.
 
 The pool has at most four connections per Store. Connection acquisition and
 operations have a five-second context budget; PostgreSQL also enforces five-
@@ -75,6 +75,34 @@ index/query is used. `max_attempts` is stored separately for claim filtering.
 The lease migration backfills it from the canonical JSON text with a narrow
 regular expression rather than a JSON extraction operator, because PostgreSQL
 JSON extraction rejects an otherwise preserved escaped NUL.
+
+## Admission capacity and retention
+
+- `admission_control` is a singleton policy row. The migration defaults to
+  10,000 retained jobs and a 24-hour replay window; bounds are 1–1,000,000 jobs
+  and one minute–30 days. `ConfigureAdmission` changes the shared database
+  policy and refuses to set the cap below the current retained count.
+- `AFTER INSERT` and `AFTER DELETE` triggers maintain the count in the same
+  transaction as the row change. The insert trigger atomically increments only
+  below the cap, so independent pools cannot overshoot it. A named constraint
+  error maps to `jobs.ErrCapacity`; unrelated database constraint failures are
+  not mislabeled.
+- Capacity includes active and terminal records. At capacity, new keys fail but
+  an existing key still replays or conflicts. Admission never silently deletes
+  history to make room.
+- `PurgeTerminal(limit)` accepts 1–1,000, locks the policy for a stable window,
+  and uses a deterministic partial-index scan with `FOR UPDATE SKIP LOCKED`.
+  Only succeeded, failed and canceled rows whose last transition is old enough
+  can be deleted. Active work is never eligible, regardless of age.
+- The replay window is a **minimum**, measured from terminal `updated_at` using
+  database time. A key continues to replay after the window until a purge removes
+  it. After removal the key may create a new job ID; clients needing a longer
+  guarantee must configure a longer window.
+
+The migration backfills the counter from existing rows. If an upgrade already
+has more than 10,000 records, it sets the cap to that count instead of deleting
+data. Cleanup is an explicit store operation in M2.7; M2.8 will decide its server
+cadence and expose durable admission through HTTP.
 
 ## Claim protocol
 
@@ -179,7 +207,9 @@ failure retries, and an expired claim recovers. These are correctness tests, not
 throughput measurements. M2.6 adds two real race-instrumented worker processes:
 worker A is killed after claiming, worker B recovers and completes attempt two,
 the fencing version follows claim → recovery → reclaim, and A's captured token
-is rejected. This is process-level recovery evidence, not an exactly-once claim.
+is rejected. M2.7 adds cap/replay/cleanup cases, including active-row safety and
+a concurrent 16-submit cleanup race across two pools. This is correctness
+evidence, not an exactly-once or throughput claim.
 
-Next: define bounded retention and idempotency replay before the PostgreSQL store
-is exposed through HTTP.
+Next: expose this bounded store through a PostgreSQL-backed HTTP mode and prove
+that HTTP 202 follows commit and survives a server restart.

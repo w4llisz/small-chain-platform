@@ -46,6 +46,13 @@ and drains accepted attempts. SIGKILL leaves the current lease for another
 worker's recovery sweep. `make test-integration` automates the two-process kill
 case against a disposable schema; it does not use the memory HTTP API.
 
+The durable store defaults to 10,000 retained rows and a 24-hour minimum replay
+window. Replays continue after that window until `PurgeTerminal` is invoked;
+M2.7 intentionally does not hide cleanup in the worker. Only terminal jobs are
+eligible. Capacity errors therefore mean an operator must inspect retention and
+run bounded cleanup through the store integration path, not delete active rows.
+The M1 HTTP `-max-jobs` setting is separate until M2.8 wires durable HTTP.
+
 ## Troubleshooting
 
 - **429:** inspect queue and retrying jobs. Reduce load; adjust workers using measured resource use. More queue capacity only permits more waiting.
