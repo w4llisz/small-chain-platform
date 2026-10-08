@@ -147,20 +147,55 @@ type apiProcess struct {
 }
 
 type synchronizedBuffer struct {
-	mu sync.Mutex
-	bytes.Buffer
+	mu     sync.Mutex
+	buffer bytes.Buffer
 }
 
 func (b *synchronizedBuffer) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.Buffer.Write(data)
+	return b.buffer.Write(data)
 }
 
 func (b *synchronizedBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.Buffer.String()
+	return b.buffer.String()
+}
+
+func TestSynchronizedProcessLogCapture(t *testing.T) {
+	var output synchronizedBuffer
+	reader, writer := io.Pipe()
+	copied := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&output, reader)
+		copied <- err
+	}()
+	produced := make(chan error, 1)
+	go func() {
+		for range 1000 {
+			if _, err := writer.Write([]byte("process log\n")); err != nil {
+				produced <- err
+				return
+			}
+		}
+		produced <- writer.Close()
+	}()
+	for {
+		_ = output.String()
+		select {
+		case err := <-copied:
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := <-produced; err != nil {
+				t.Fatal(err)
+			}
+			return
+		default:
+			runtime.Gosched()
+		}
+	}
 }
 
 func startAPIProcess(t *testing.T, binary, dsn string) *apiProcess {
