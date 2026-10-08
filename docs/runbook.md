@@ -2,7 +2,7 @@
 
 ## Inspect
 
-`make run` listens on loopback. `/healthz` checks responsiveness; `/readyz` returns 503 when draining. JSON logs use `job_id` for transitions and `request_id` for HTTP requests. Payloads, keys and panic values are not logged; route templates replace arbitrary request paths.
+`make run` starts memory mode on loopback. `/healthz` checks process responsiveness; `/readyz` returns 503 when draining and PostgreSQL mode also checks database connectivity. JSON logs use `job_id` for transitions and `request_id` for HTTP requests. Payloads, keys and panic values are not logged; route templates replace arbitrary request paths.
 
 | Signal | Interpretation |
 | --- | --- |
@@ -38,27 +38,29 @@ with a unique owner:
 ```sh
 export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
 make migrate
+go run ./cmd/small-chain -storage=postgres
+# In another terminal:
 go run ./cmd/small-chain-worker -owner=worker-a
 ```
 
 The worker does not run DDL and never prints the DSN. SIGTERM stops new claims
 and drains accepted attempts. SIGKILL leaves the current lease for another
 worker's recovery sweep. `make test-integration` automates the two-process kill
-case against a disposable schema; it does not use the memory HTTP API.
+case and the durable HTTP restart case against disposable schemas.
 
 The durable store defaults to 10,000 retained rows and a 24-hour minimum replay
 window. Replays continue after that window until `PurgeTerminal` is invoked;
 M2.7 intentionally does not hide cleanup in the worker. Only terminal jobs are
 eligible. Capacity errors therefore mean an operator must inspect retention and
 run bounded cleanup through the store integration path, not delete active rows.
-The M1 HTTP `-max-jobs` setting is separate until M2.8 wires durable HTTP.
+The memory-only `-max-jobs` flag does not configure the shared PostgreSQL policy.
 
 ## Troubleshooting
 
 - **429:** inspect queue and retrying jobs. Reduce load; adjust workers using measured resource use. More queue capacity only permits more waiting.
-- **503 record_capacity:** export needed results, then restart the demo. All jobs/keys are lost. Durable retention is M2.
+- **503 record_capacity:** in memory mode, restart only if discarding demo history is acceptable. In PostgreSQL mode, inspect the shared cap/replay window and invoke bounded terminal cleanup; never delete active rows to make room.
 - **Stuck work:** inspect timeout/attempt/state. Executors must honor context; Go cannot preempt arbitrary task functions.
-- **Missing HTTP records after restart:** expected in the M1 API. The separately started PostgreSQL worker recovers only jobs durably admitted to its store.
+- **Missing HTTP records after restart:** expected only in default memory mode. Start with `-storage=postgres` and the same migrated `DATABASE_URL` for durable records.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Missing traces/percentiles:** planned, not present; duration is sum/count only.
 

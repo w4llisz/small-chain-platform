@@ -1,4 +1,4 @@
-# PostgreSQL durable core (M2.1–M2.7)
+# PostgreSQL durable core (M2.1–M2.8)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
@@ -6,8 +6,9 @@ operations. `internal/dbworker` composes them into a bounded polling worker for
 the trusted checksum executor, and `cmd/small-chain-worker` runs it as an
 independent process. PostgreSQL owns durable admission, lease assignment, fenced
 state writes, expired-lease transitions, a shared admission cap and terminal
-retention. **The HTTP server still runs the M1 memory engine.** There is no
-database-backed HTTP 202 yet, and terminal cleanup is not scheduled by a process.
+retention. `cmd/small-chain -storage=postgres` exposes the same submit/get/cancel
+HTTP contract directly on this store, while the default mode remains memory.
+Terminal cleanup is not yet scheduled by a process.
 
 ## Reproduce
 
@@ -22,6 +23,8 @@ docker exec small-chain-postgres pg_isready -U small_chain -d small_chain_test
 export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
 make migrate
 make migrate  # no-op: checksums still checked
+go run ./cmd/small-chain -storage=postgres
+# In another terminal, using the same DATABASE_URL:
 go run ./cmd/small-chain-worker -owner=local-worker
 export TEST_DATABASE_URL="$DATABASE_URL"
 make test-integration
@@ -34,8 +37,8 @@ real connection string. Migration commands require schema-creation privileges;
 tests create a random schema per case and drop only that schema at cleanup.
 The test database user must be able to create schemas. CI provisions the same
 PostgreSQL major version and runs the integration suite with the race detector.
-Each live worker needs a unique `-owner`; migrations must finish before workers
-start. `DATABASE_URL` is intentionally not accepted as a flag. `make verify`
+Each live worker needs a unique `-owner`; migrations must finish before the API
+or workers start. `DATABASE_URL` is intentionally not accepted as a flag. `make verify`
 remains usable without a database. The explicit `make test-integration` target
 **fails**, rather than skips, without its URL.
 
@@ -101,8 +104,8 @@ JSON extraction rejects an otherwise preserved escaped NUL.
 
 The migration backfills the counter from existing rows. If an upgrade already
 has more than 10,000 records, it sets the cap to that count instead of deleting
-data. Cleanup is an explicit store operation in M2.7; M2.8 will decide its server
-cadence and expose durable admission through HTTP.
+data. Cleanup remains an explicit store operation; the next retention increment
+will add a bounded service-owned cadence.
 
 ## Claim protocol
 
@@ -186,7 +189,7 @@ same transaction. Concurrent migrators serialize; a failed migration rolls back
 both DDL and history. Unknown/newer or edited history fails closed. The lock
 coordinates this project's migrators, not arbitrary manual SQL changes.
 
-Never edit an applied file. Add `0005_*.sql` for the next change. Only small,
+Never edit an applied file. Add a new numbered migration for the next schema change. Only small,
 transaction-compatible migrations belong here; no `CREATE INDEX CONCURRENTLY`,
 destructive automatic rollback, or production online-migration claim is made.
 
@@ -208,8 +211,10 @@ throughput measurements. M2.6 adds two real race-instrumented worker processes:
 worker A is killed after claiming, worker B recovers and completes attempt two,
 the fencing version follows claim → recovery → reclaim, and A's captured token
 is rejected. M2.7 adds cap/replay/cleanup cases, including active-row safety and
-a concurrent 16-submit cleanup race across two pools. This is correctness
-evidence, not an exactly-once or throughput claim.
+a concurrent 16-submit cleanup race across two pools. M2.8 adds a real API
+binary restart: 202 follows durable admission, the database cap maps to 503,
+and the same record replays, conflicts, reads and cancels after restart. This is
+correctness evidence, not an exactly-once or throughput claim.
 
-Next: expose this bounded store through a PostgreSQL-backed HTTP mode and prove
-that HTTP 202 follows commit and survives a server restart.
+Next: schedule bounded terminal cleanup without coupling it to worker claims,
+then add append-only lifecycle events.

@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 API runnable; M2.7 durable scheduling and retention implemented separately.** The default HTTP service still uses bounded in-memory storage. PostgreSQL now enforces a shared admission cap, a minimum idempotency replay window and terminal-only cleanup in addition to leased execution, fencing and process recovery. Durable HTTP admission is not wired yet; append-only events, tracing and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and M2.8 durable HTTP/worker mode are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup and cancellation use PostgreSQL as the only source of truth; a separate worker process claims the same durable records. Append-only events, automated retention maintenance, tracing and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -56,6 +56,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Deadlines and cancellation | Per-attempt context; canceled jobs cannot be overwritten by late success |
 | Graceful lifecycle | Stop admission, drain accepted tasks; cancel remaining work at shutdown deadline |
 | Bounded retention | Cap on retained jobs and keys; new keys rejected at capacity; existing keys still replay |
+| Durable HTTP contract | Optional PostgreSQL mode returns 202 only after commit; replay, conflict, capacity and restart behavior are process-tested |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
@@ -83,7 +84,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `cmd/small-chain/` | Configuration, HTTP server, signals and shutdown |
 | `cmd/small-chain-worker/` | PostgreSQL worker process, configuration, signals and graceful drain |
 | `internal/jobs/` | Job model, state machine, concurrency, retries and tests |
-| `internal/postgres/` | Migrations, bounded admission/retention, leases/outcomes/recovery and real-DB race tests (not wired to HTTP) |
+| `internal/postgres/` | Migrations, durable HTTP admission, bounded retention, leases/outcomes/recovery and real-DB race tests |
 | `internal/dbworker/` | Bounded PostgreSQL poll/heartbeat/recovery loop with shutdown and fencing-loss tests |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
@@ -107,28 +108,29 @@ docker run --rm -p 127.0.0.1:8080:8080 small-chain:local
 
 The binary defaults to loopback. The container listens on all container interfaces; publish it only on local loopback for this unauthenticated demo. No external credentials are needed.
 
-For the optional durable admission package, follow the [PostgreSQL setup and test guide](docs/postgres.md): `make migrate` and `make test-integration`. These commands do not switch the HTTP server to PostgreSQL.
-
-After applying migrations, start independent workers with unique identities:
+For durable mode, follow the [PostgreSQL setup and test guide](docs/postgres.md). Apply migrations explicitly, then run the API and at least one worker:
 
 ```sh
-DATABASE_URL="$DATABASE_URL" go run ./cmd/small-chain-worker -owner=worker-a
-DATABASE_URL="$DATABASE_URL" go run ./cmd/small-chain-worker -owner=worker-b
+export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
+make migrate
+go run ./cmd/small-chain -storage=postgres
+# In another terminal, with the same DATABASE_URL:
+go run ./cmd/small-chain-worker -owner=worker-a
 ```
 
-`DATABASE_URL` stays in the environment rather than process arguments. The
-process-recovery integration test is currently the reproducible way to seed and
-exercise this durable path; the HTTP API does not submit to it yet.
+`DATABASE_URL` stays in the environment rather than process arguments. The API
+does not run DDL or start an in-process memory worker in this mode. Add more
+workers only with unique owners.
 
 ## Limits and next milestones
 
-- Restarting the default M1 HTTP server loses its jobs, results and idempotency keys. Its HTTP 202 acknowledges memory admission, not durable storage.
-- HTTP 202 is still memory-only. The durable worker command, retention API and process-kill recovery test operate on PostgreSQL jobs submitted through the store integration path.
+- Restarting the default memory mode loses jobs, results and idempotency keys. Its HTTP 202 acknowledges memory admission. In PostgreSQL mode, 202 follows transaction commit and records survive API restart.
+- PostgreSQL mode requires migrations and a reachable database before startup. Readiness fails if the database becomes unavailable; new submissions fail without falling back to memory.
 - Recovery is at least once. Fencing protects the PostgreSQL row, not external side effects; exactly-once execution is not claimed.
 - M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window; terminal cleanup is explicit and not yet scheduled by the HTTP process.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
-- Metrics expose counters and an attempt-duration sum/count. Percentile histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.
+- PostgreSQL mode currently exposes HTTP counters and a backend identity metric; its job/attempt gauges are not fabricated from process-local state. Durable metrics, percentile histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.
 
 The target portfolio release is a **Go + PostgreSQL job platform with a small React/TypeScript operations console**, backed by failure-recovery tests and reproducible measurements. See [milestones](docs/roadmap.md) and [design decisions](docs/architecture.md).
 

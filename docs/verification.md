@@ -137,3 +137,17 @@ rejected, delete only terminal history beyond the replay window, reuse a key onl
 after deletion, and race 16 admissions against cleanup through two pools while
 checking both the cap and retained counter. These are correctness checks; no
 throughput, production retention cadence or durable HTTP claim is made.
+
+## M2.8 durable HTTP increment — 2026-10-08
+
+Local, Linux amd64 with Go 1.27.1: `make verify`, integration-tag compilation,
+integration-tag vet and module verification are required before submission.
+The database-backed API is exercised by candidate-branch CI against PostgreSQL
+16 with the race detector and a real race-instrumented server binary.
+
+The new process case obtains 202 only after a durable submit, maps a one-record
+database cap to 503, stops the API with SIGTERM, restarts it on the same schema,
+and verifies same-key replay, lookup, changed-payload conflict, cancellation and
+the PostgreSQL backend metric. The server never creates a memory engine in this
+mode. This proves API-process restart persistence, not database disaster
+recovery, scheduled cleanup, exactly-once side effects or throughput.

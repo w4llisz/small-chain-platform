@@ -1,6 +1,6 @@
 // Package postgres implements durable admission and leased scheduling. The HTTP
-// service still uses the M1 in-memory engine; cmd/small-chain-worker consumes
-// this store through the bounded database worker.
+// service can use this store directly, while cmd/small-chain-worker consumes it
+// through the bounded database worker.
 package postgres
 
 import (
@@ -51,6 +51,17 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 }
 
 func (s *Store) Close() { s.pool.Close() }
+
+// Ping checks whether the existing bounded pool can reach PostgreSQL. It does
+// not run migrations or mutate application data.
+func (s *Store) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	if err := s.pool.Ping(ctx); err != nil {
+		return fmt.Errorf("ping PostgreSQL: %w", err)
+	}
+	return nil
+}
 
 const jobColumns = "id, spec, state, attempts, result, error, created_at, updated_at"
 

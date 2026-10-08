@@ -27,5 +27,7 @@ test-integration:
 	@test -n "$$TEST_DATABASE_URL" || (echo "TEST_DATABASE_URL is required" >&2; exit 1)
 	mkdir -p bin
 	CGO_ENABLED=1 $(GO) build -race -trimpath -o bin/small-chain-worker-integration ./cmd/small-chain-worker
+	CGO_ENABLED=1 $(GO) build -race -trimpath -o bin/small-chain-api-integration ./cmd/small-chain
 	SMALL_CHAIN_WORKER_BINARY="$(CURDIR)/bin/small-chain-worker-integration" \
-		$(GO) test -tags=integration -race -count=1 -timeout=90s -v ./internal/postgres ./internal/dbworker
+	SMALL_CHAIN_API_BINARY="$(CURDIR)/bin/small-chain-api-integration" \
+		$(GO) test -tags=integration -race -count=1 -timeout=120s -v ./internal/postgres ./internal/dbworker ./internal/httpapi

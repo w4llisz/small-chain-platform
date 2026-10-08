@@ -15,6 +15,7 @@ import (
 
 	"github.com/w4llisz/small-chain-platform/internal/httpapi"
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
+	"github.com/w4llisz/small-chain-platform/internal/postgres"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 
 func run(logger *slog.Logger) error {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (local demo; no authentication)")
+	storage := flag.String("storage", "memory", "storage backend: memory or postgres")
 	workers := flag.Int("workers", 4, "concurrent worker slots")
 	queue := flag.Int("queue", 64, "pending queue capacity")
 	maxJobs := flag.Int("max-jobs", 10000, "maximum retained records and idempotency keys")
@@ -35,25 +37,56 @@ func run(logger *slog.Logger) error {
 	if *grace <= 0 {
 		return errors.New("shutdown-grace must be positive")
 	}
-	engine, err := jobs.New(jobs.Config{Workers: *workers, QueueCapacity: *queue, MaxJobs: *maxJobs, RetryBase: 100 * time.Millisecond, RetryMax: 2 * time.Second}, jobs.Checksum, logger)
-	if err != nil {
-		return err
+	var (
+		api     *httpapi.API
+		engine  *jobs.Engine
+		pgStore *postgres.Store
+		err     error
+	)
+	switch *storage {
+	case "memory":
+		engine, err = jobs.New(jobs.Config{Workers: *workers, QueueCapacity: *queue, MaxJobs: *maxJobs, RetryBase: 100 * time.Millisecond, RetryMax: 2 * time.Second}, jobs.Checksum, logger)
+		if err != nil {
+			return err
+		}
+		api = httpapi.New(engine, logger)
+	case "postgres":
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			return errors.New("DATABASE_URL is required for postgres storage")
+		}
+		pgStore, err = postgres.Open(context.Background(), dsn)
+		if err != nil {
+			return err
+		}
+		api = httpapi.NewPostgres(pgStore, logger)
+	default:
+		return errors.New("storage must be memory or postgres")
 	}
 	defer func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		_ = engine.Shutdown(ctx)
+		if engine != nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_ = engine.Shutdown(ctx)
+		}
+		if pgStore != nil {
+			pgStore.Close()
+		}
 	}()
 	listener, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	server := &http.Server{Handler: httpapi.New(engine, logger), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	server := &http.Server{Handler: api, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
-	logger.Info("service.started", "address", listener.Addr().String(), "workers", *workers, "queue_capacity", *queue, "storage", "memory")
+	startedFields := []any{"address", listener.Addr().String(), "storage", *storage}
+	if engine != nil {
+		startedFields = append(startedFields, "workers", *workers, "queue_capacity", *queue)
+	}
+	logger.Info("service.started", startedFields...)
 	select {
 	case <-ctx.Done():
 	case err := <-serveErr:
@@ -61,7 +94,7 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 	}
-	engine.StopAdmission()
+	api.StopAdmission()
 	logger.Info("service.draining")
 	deadline, cancel := context.WithTimeout(context.Background(), *grace)
 	defer cancel()
@@ -69,7 +102,10 @@ func run(logger *slog.Logger) error {
 	if httpErr != nil {
 		_ = server.Close()
 	}
-	jobErr := engine.Shutdown(deadline)
+	var jobErr error
+	if engine != nil {
+		jobErr = engine.Shutdown(deadline)
+	}
 	logger.Info("service.stopped")
 	return errors.Join(httpErr, jobErr)
 }

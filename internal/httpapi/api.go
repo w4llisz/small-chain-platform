@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,18 +14,35 @@ import (
 	"time"
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
+	"github.com/w4llisz/small-chain-platform/internal/postgres"
 )
 
 type API struct {
-	engine       *jobs.Engine
+	backend      jobBackend
+	stats        func() jobs.Stats
+	storage      string
 	log          *slog.Logger
+	mux          *http.ServeMux
+	accepting    atomic.Bool
 	requests     atomic.Uint64
 	serverErrors atomic.Uint64
 	sequence     atomic.Uint64
 }
 
-func New(engine *jobs.Engine, logger *slog.Logger) http.Handler {
-	a := &API{engine: engine, log: logger}
+func New(engine *jobs.Engine, logger *slog.Logger) *API {
+	return newAPI(memoryBackend{engine: engine}, engine.Stats, "memory", logger)
+}
+
+// NewPostgres exposes durable admission, reads and cancellation. Store.Submit
+// commits before returning, so HTTP 202 means the job is durable. Migrations and
+// worker execution remain separate process responsibilities.
+func NewPostgres(store *postgres.Store, logger *slog.Logger) *API {
+	return newAPI(postgresBackend{store: store}, nil, "postgres", logger)
+}
+
+func newAPI(backend jobBackend, stats func() jobs.Stats, storage string, logger *slog.Logger) *API {
+	a := &API{backend: backend, stats: stats, storage: storage, log: logger}
+	a.accepting.Store(true)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/jobs", a.submit)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.get)
@@ -33,27 +51,45 @@ func New(engine *jobs.Engine, logger *slog.Logger) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if !engine.Stats().Accepting {
+		if !a.accepting.Load() {
 			writeError(w, http.StatusServiceUnavailable, "draining", "engine is draining")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		defer cancel()
+		if err := a.backend.Ready(ctx); err != nil {
+			a.log.Error("http.readiness_failed", "error", err)
+			writeError(w, http.StatusServiceUnavailable, "not_ready", "backend is unavailable")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.HandleFunc("GET /metrics", a.metrics)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		// Generate locally; never trust arbitrary client header values in logs.
-		id := strconv.FormatUint(a.sequence.Add(1), 10)
-		w.Header().Set("X-Request-ID", id)
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		rw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-		mux.ServeHTTP(rw, r)
-		a.requests.Add(1)
-		if rw.status >= 500 {
-			a.serverErrors.Add(1)
-		}
-		a.log.Info("http.request", "request_id", id, "method", r.Method, "route", r.Pattern, "status", rw.status, "duration_ms", time.Since(start).Milliseconds())
-	})
+	a.mux = mux
+	return a
+}
+
+func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	// Generate locally; never trust arbitrary client header values in logs.
+	id := strconv.FormatUint(a.sequence.Add(1), 10)
+	w.Header().Set("X-Request-ID", id)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	rw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	a.mux.ServeHTTP(rw, r)
+	a.requests.Add(1)
+	if rw.status >= 500 {
+		a.serverErrors.Add(1)
+	}
+	a.log.Info("http.request", "request_id", id, "method", r.Method, "route", r.Pattern, "status", rw.status, "duration_ms", time.Since(start).Milliseconds())
+}
+
+// StopAdmission is idempotent. Requests already inside Submit may finish; new
+// requests receive 503 before a backend write begins.
+func (a *API) StopAdmission() {
+	if a.accepting.CompareAndSwap(true, false) {
+		a.backend.StopAdmission()
+	}
 }
 
 type statusWriter struct {
@@ -77,6 +113,10 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 }
 
 func (a *API) submit(w http.ResponseWriter, r *http.Request) {
+	if !a.accepting.Load() {
+		writeError(w, http.StatusServiceUnavailable, "draining", jobs.ErrClosed.Error())
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	defer r.Body.Close()
 	dec := json.NewDecoder(r.Body)
@@ -94,7 +134,7 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		decodeError(w, err)
 		return
 	}
-	j, replay, err := a.engine.Submit(r.Header.Get("Idempotency-Key"), spec)
+	j, replay, err := a.backend.Submit(r.Context(), r.Header.Get("Idempotency-Key"), spec)
 	if err != nil {
 		a.engineError(w, err)
 		return
@@ -118,7 +158,7 @@ func decodeError(w http.ResponseWriter, err error) {
 }
 
 func (a *API) get(w http.ResponseWriter, r *http.Request) {
-	j, err := a.engine.Get(r.PathValue("id"))
+	j, err := a.backend.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
 		a.engineError(w, err)
 		return
@@ -127,7 +167,7 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) cancel(w http.ResponseWriter, r *http.Request) {
-	j, err := a.engine.Cancel(r.PathValue("id"))
+	j, err := a.backend.Cancel(r.Context(), r.PathValue("id"))
 	if err != nil {
 		a.engineError(w, err)
 		return
@@ -166,19 +206,24 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func (a *API) metrics(w http.ResponseWriter, r *http.Request) {
-	s := a.engine.Stats()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	metric := func(name, typ, help string, value any) {
 		fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %v\n", name, help, name, typ, name, value)
 	}
+	fmt.Fprintln(w, "# HELP small_chain_backend_info Active storage backend.\n# TYPE small_chain_backend_info gauge")
+	fmt.Fprintf(w, "small_chain_backend_info{storage=%q} 1\n", a.storage)
+	metric("small_chain_http_requests_total", "counter", "Completed HTTP requests including probes.", a.requests.Load())
+	metric("small_chain_http_server_errors_total", "counter", "HTTP responses with 5xx status.", a.serverErrors.Load())
+	if a.stats == nil {
+		return
+	}
+	s := a.stats()
 	metric("small_chain_queue_depth", "gauge", "Pending channel entries including canceled tombstones.", s.QueueDepth)
 	metric("small_chain_workers", "gauge", "Configured worker slots, including slots occupied by retry backoff.", s.Workers)
 	metric("small_chain_record_capacity", "gauge", "Maximum retained job records.", s.MaxJobs)
 	metric("small_chain_attempts_total", "counter", "Started execution attempts.", s.Attempts)
 	metric("small_chain_retries_total", "counter", "Scheduled retries.", s.Retries)
 	metric("small_chain_rejections_total", "counter", "Admission rejections for queue, retention capacity or shutdown.", s.Rejected)
-	metric("small_chain_http_requests_total", "counter", "Completed HTTP requests including probes.", a.requests.Load())
-	metric("small_chain_http_server_errors_total", "counter", "HTTP responses with 5xx status.", a.serverErrors.Load())
 	fmt.Fprintln(w, "# HELP small_chain_jobs Retained jobs by lifecycle state.\n# TYPE small_chain_jobs gauge")
 	for _, state := range []jobs.State{jobs.Queued, jobs.Running, jobs.Retrying, jobs.Succeeded, jobs.Failed, jobs.Canceled} {
 		fmt.Fprintf(w, "small_chain_jobs{state=%q} %d\n", state, s.States[state])

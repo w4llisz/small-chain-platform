@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1 adds concrete PostgreSQL admission, M2.2 adds transactional claiming and fencing tokens, M2.3 consumes those tokens for heartbeat and outcomes, M2.4 makes expired leases recoverable, M2.5 drives those operations from a bounded worker package, M2.6 proves that protocol across killed OS processes, and M2.7 bounds durable admission and terminal history.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth.
 
 ## State machine
 
@@ -46,7 +46,7 @@ An attempt gets a child deadline of the job context, canceled immediately after 
 | Retain terminal records up to cap | Stable idempotency during process lifetime | Finite demo lifetime; M2 adds documented retention/expiration |
 | Fixed trusted executor | Reproducible fault injection | Untrusted CI execution needs a separate isolation design |
 
-## M2.1: durable admission (implemented, not wired to HTTP)
+## M2.1: durable admission (implemented; unwired at that increment)
 
 `internal/postgres` persists normalized specs and SHA-256 fingerprints, with a
 unique key and explicit READ COMMITTED transactions. Replays use a separate
@@ -56,9 +56,10 @@ history. At the M2.1 migration boundary the schema restricts state to queued and
 attempts to zero; the following migration expands those invariants for claims.
 Database connection/query/lock waits are bounded. Full protocol, retention
 limitations and real-database tests are in [the PostgreSQL guide](postgres.md).
-The M1 HTTP/worker process is unchanged; it cannot claim durable acceptance yet.
+At that increment the M1 HTTP/worker process was unchanged; M2.8 now exposes the
+store through the API.
 
-## M2.2: transactional claims (implemented, not wired to workers)
+## M2.2: transactional claims (implemented; unwired at that increment)
 
 Migration `0002_leases.sql` persists `max_attempts`, `available_at`, lease owner,
 monotonic version and expiry. Database constraints couple `running` state to a
@@ -75,11 +76,11 @@ An ambiguous commit returns no work, so the caller must not execute anything.
 
 Claim alone does **not** make lease expiry actionable: `RecoverExpired` must run
 before an expired row becomes available again. Heartbeat, finish/retry/cancel and
-recovery are implemented store operations, but append-only events, worker
-execution and HTTP persistence are still planned. This avoids presenting a
-database row lock as end-to-end crash recovery.
+recovery are implemented store operations. Later increments add worker execution
+and HTTP persistence; append-only events remain planned. This avoids presenting
+a database row lock as end-to-end crash recovery.
 
-## M2.3: fenced lifecycle writes (implemented, not wired to workers)
+## M2.3: fenced lifecycle writes (implemented; unwired at that increment)
 
 Migration `0003_outcomes.sql` stores bounded results and errors and constrains
 them to valid lifecycle states. It backfills terminal/retrying rows permitted by
@@ -191,10 +192,26 @@ LOCKED`. Only succeeded, failed and canceled rows can match. The window starts a
 the terminal transition's database `updated_at`; queued, running and retrying
 rows are never age-deleted. The window is a minimum guarantee, not an exact TTL:
 after it passes the key still replays until a purge removes it, and reuse after
-removal creates a new job ID. Cleanup is explicit in M2.7; the M2.8 server will
-own its schedule.
+removal creates a new job ID. Cleanup remains explicit; a bounded service-owned
+maintenance cadence is the next retention increment.
 
-## M2 remainder: PostgreSQL as the durable queue (planned)
+## M2.8: PostgreSQL-backed HTTP mode (implemented)
+
+`cmd/small-chain -storage=postgres` opens the store from `DATABASE_URL` and
+constructs the HTTP adapter without creating the memory engine or queue. Submit
+returns 202 only after `Store.Submit` commits; replay, conflict and capacity map
+to the same public contract as memory mode. Get and cancel read/write the same
+rows consumed by independent worker processes. Startup does not run migrations.
+
+Readiness performs a bounded database ping and becomes 503 while draining or
+when connectivity is lost. Shutdown closes HTTP admission before the store. The
+PostgreSQL adapter intentionally exposes no process-local job gauges: only HTTP
+counters and `small_chain_backend_info` are emitted until durable metrics are
+designed. A real-binary integration test admits a record, reaches capacity,
+restarts the API on the same schema, and verifies replay, lookup, conflict,
+cancellation and backend identity.
+
+## M2 remainder: events and maintenance (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 

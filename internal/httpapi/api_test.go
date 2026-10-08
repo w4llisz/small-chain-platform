@@ -14,7 +14,7 @@ import (
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 )
 
-func fixture(t *testing.T) (*jobs.Engine, http.Handler) {
+func fixture(t *testing.T) (*jobs.Engine, *API) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	e, err := jobs.New(jobs.Config{Workers: 1, QueueCapacity: 8, MaxJobs: 100, RetryBase: time.Millisecond, RetryMax: 2 * time.Millisecond}, jobs.Checksum, logger)
@@ -83,8 +83,8 @@ func TestHTTPContract(t *testing.T) {
 }
 
 func TestReadinessAndAdmissionDuringDrain(t *testing.T) {
-	e, h := fixture(t)
-	e.StopAdmission()
+	_, h := fixture(t)
+	h.StopAdmission()
 	for _, tc := range []struct {
 		method, path, body string
 		status             int
