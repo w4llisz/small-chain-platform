@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and M2.8 durable HTTP/worker mode are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup and cancellation use PostgreSQL as the only source of truth; a separate worker process claims the same durable records. Append-only events, automated retention maintenance, tracing and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and M2.9 durable HTTP/worker mode are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup and cancellation use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. Append-only events, tracing and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -57,6 +57,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Graceful lifecycle | Stop admission, drain accepted tasks; cancel remaining work at shutdown deadline |
 | Bounded retention | Cap on retained jobs and keys; new keys rejected at capacity; existing keys still replay |
 | Durable HTTP contract | Optional PostgreSQL mode returns 202 only after commit; replay, conflict, capacity and restart behavior are process-tested |
+| Retention maintenance | Startup and periodic bounded terminal cleanup; serial sweeps, retrying error logs and cancellation before pool close |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
@@ -85,6 +86,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `cmd/small-chain-worker/` | PostgreSQL worker process, configuration, signals and graceful drain |
 | `internal/jobs/` | Job model, state machine, concurrency, retries and tests |
 | `internal/postgres/` | Migrations, durable HTTP admission, bounded retention, leases/outcomes/recovery and real-DB race tests |
+| `internal/maintenance/` | Cancellable PostgreSQL retention cadence, structured failure reporting and race-tested retry behavior |
 | `internal/dbworker/` | Bounded PostgreSQL poll/heartbeat/recovery loop with shutdown and fencing-loss tests |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
@@ -113,7 +115,7 @@ For durable mode, follow the [PostgreSQL setup and test guide](docs/postgres.md)
 ```sh
 export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
 make migrate
-go run ./cmd/small-chain -storage=postgres
+go run ./cmd/small-chain -storage=postgres -retention-interval=1m -retention-batch=100
 # In another terminal, with the same DATABASE_URL:
 go run ./cmd/small-chain-worker -owner=worker-a
 ```
@@ -127,7 +129,7 @@ workers only with unique owners.
 - Restarting the default memory mode loses jobs, results and idempotency keys. Its HTTP 202 acknowledges memory admission. In PostgreSQL mode, 202 follows transaction commit and records survive API restart.
 - PostgreSQL mode requires migrations and a reachable database before startup. Readiness fails if the database becomes unavailable; new submissions fail without falling back to memory.
 - Recovery is at least once. Fencing protects the PostgreSQL row, not external side effects; exactly-once execution is not claimed.
-- M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window; terminal cleanup is explicit and not yet scheduled by the HTTP process.
+- M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window. The API deletes up to 100 eligible terminal rows at startup and every minute by default; `-retention-interval=0` disables this maintenance.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
 - PostgreSQL mode currently exposes HTTP counters and a backend identity metric; its job/attempt gauges are not fabricated from process-local state. Durable metrics, percentile histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.

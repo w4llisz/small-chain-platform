@@ -15,6 +15,7 @@ import (
 
 	"github.com/w4llisz/small-chain-platform/internal/httpapi"
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
+	"github.com/w4llisz/small-chain-platform/internal/maintenance"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
 )
 
@@ -33,15 +34,18 @@ func run(logger *slog.Logger) error {
 	queue := flag.Int("queue", 64, "pending queue capacity")
 	maxJobs := flag.Int("max-jobs", 10000, "maximum retained records and idempotency keys")
 	grace := flag.Duration("shutdown-grace", 10*time.Second, "total graceful shutdown budget")
+	retentionInterval := flag.Duration("retention-interval", time.Minute, "PostgreSQL terminal cleanup cadence; 0 disables cleanup")
+	retentionBatch := flag.Int("retention-batch", 100, "maximum terminal jobs deleted per cleanup sweep")
 	flag.Parse()
 	if *grace <= 0 {
 		return errors.New("shutdown-grace must be positive")
 	}
 	var (
-		api     *httpapi.API
-		engine  *jobs.Engine
-		pgStore *postgres.Store
-		err     error
+		api       *httpapi.API
+		engine    *jobs.Engine
+		pgStore   *postgres.Store
+		retention *maintenance.Retention
+		err       error
 	)
 	switch *storage {
 	case "memory":
@@ -55,11 +59,21 @@ func run(logger *slog.Logger) error {
 		if dsn == "" {
 			return errors.New("DATABASE_URL is required for postgres storage")
 		}
+		if *retentionInterval < 0 {
+			return errors.New("retention-interval must not be negative")
+		}
 		pgStore, err = postgres.Open(context.Background(), dsn)
 		if err != nil {
 			return err
 		}
 		api = httpapi.NewPostgres(pgStore, logger)
+		if *retentionInterval > 0 {
+			retention, err = maintenance.NewRetention(pgStore, logger, *retentionInterval, *retentionBatch)
+			if err != nil {
+				pgStore.Close()
+				return err
+			}
+		}
 	default:
 		return errors.New("storage must be memory or postgres")
 	}
@@ -78,6 +92,24 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 	server := &http.Server{Handler: api, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	var (
+		retentionCancel context.CancelFunc
+		retentionDone   <-chan struct{}
+	)
+	if retention != nil {
+		retentionCtx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		retentionCancel = cancel
+		retentionDone = done
+		go func() {
+			retention.Run(retentionCtx)
+			close(done)
+		}()
+		defer func() {
+			cancel()
+			<-done
+		}()
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	serveErr := make(chan error, 1)
@@ -85,6 +117,9 @@ func run(logger *slog.Logger) error {
 	startedFields := []any{"address", listener.Addr().String(), "storage", *storage}
 	if engine != nil {
 		startedFields = append(startedFields, "workers", *workers, "queue_capacity", *queue)
+	}
+	if retention != nil {
+		startedFields = append(startedFields, "retention_interval", retentionInterval.String(), "retention_batch", *retentionBatch)
 	}
 	logger.Info("service.started", startedFields...)
 	select {
@@ -98,6 +133,13 @@ func run(logger *slog.Logger) error {
 	logger.Info("service.draining")
 	deadline, cancel := context.WithTimeout(context.Background(), *grace)
 	defer cancel()
+	if retentionCancel != nil {
+		retentionCancel()
+		select {
+		case <-retentionDone:
+		case <-deadline.Done():
+		}
+	}
 	httpErr := server.Shutdown(deadline)
 	if httpErr != nil {
 		_ = server.Close()

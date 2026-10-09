@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth; M2.9 owns the retention cadence in that API process.
 
 ## State machine
 
@@ -192,8 +192,7 @@ LOCKED`. Only succeeded, failed and canceled rows can match. The window starts a
 the terminal transition's database `updated_at`; queued, running and retrying
 rows are never age-deleted. The window is a minimum guarantee, not an exact TTL:
 after it passes the key still replays until a purge removes it, and reuse after
-removal creates a new job ID. Cleanup remains explicit; a bounded service-owned
-maintenance cadence is the next retention increment.
+removal creates a new job ID.
 
 ## M2.8: PostgreSQL-backed HTTP mode (implemented)
 
@@ -211,7 +210,23 @@ designed. A real-binary integration test admits a record, reaches capacity,
 restarts the API on the same schema, and verifies replay, lookup, conflict,
 cancellation and backend identity.
 
-## M2 remainder: events and maintenance (planned)
+## M2.9: retention maintenance (implemented)
+
+PostgreSQL API mode runs one bounded purge at startup and then on
+`-retention-interval` (one minute by default), deleting at most
+`-retention-batch` rows (100 by default). One goroutine calls the store serially,
+so slow sweeps cannot overlap or grow an unbounded queue. A failed sweep emits
+`maintenance.retention_failed` and the next cadence retries; readiness continues
+to describe admission and database connectivity, not the most recent background
+maintenance result.
+
+Shutdown stops HTTP admission, cancels any in-flight purge, waits for the loop,
+and only then closes the PostgreSQL pool. A unit test proves failure/retry,
+single-flight execution and context cancellation. The real API process test
+ages a canceled row outside the replay window and proves the scheduled sweep
+releases a one-row capacity limit before SIGTERM exits cleanly.
+
+## M2 remainder: events (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 

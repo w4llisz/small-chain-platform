@@ -1,4 +1,4 @@
-# PostgreSQL durable core (M2.1–M2.8)
+# PostgreSQL durable core (M2.1–M2.9)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
@@ -8,7 +8,7 @@ independent process. PostgreSQL owns durable admission, lease assignment, fenced
 state writes, expired-lease transitions, a shared admission cap and terminal
 retention. `cmd/small-chain -storage=postgres` exposes the same submit/get/cancel
 HTTP contract directly on this store, while the default mode remains memory.
-Terminal cleanup is not yet scheduled by a process.
+The API owns a bounded terminal-retention cadence; workers do not run cleanup.
 
 ## Reproduce
 
@@ -23,7 +23,7 @@ docker exec small-chain-postgres pg_isready -U small_chain -d small_chain_test
 export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
 make migrate
 make migrate  # no-op: checksums still checked
-go run ./cmd/small-chain -storage=postgres
+go run ./cmd/small-chain -storage=postgres -retention-interval=1m -retention-batch=100
 # In another terminal, using the same DATABASE_URL:
 go run ./cmd/small-chain-worker -owner=local-worker
 export TEST_DATABASE_URL="$DATABASE_URL"
@@ -104,8 +104,11 @@ JSON extraction rejects an otherwise preserved escaped NUL.
 
 The migration backfills the counter from existing rows. If an upgrade already
 has more than 10,000 records, it sets the cap to that count instead of deleting
-data. Cleanup remains an explicit store operation; the next retention increment
-will add a bounded service-owned cadence.
+data. PostgreSQL API mode calls the same bounded operation once at startup and
+then every `-retention-interval` (default one minute), with
+`-retention-batch=100` by default. A zero interval disables the loop. Calls are
+serial; failures are logged and retried on the next cadence without changing
+readiness. Shutdown cancels the loop before closing the connection pool.
 
 ## Claim protocol
 
@@ -213,8 +216,10 @@ the fencing version follows claim → recovery → reclaim, and A's captured tok
 is rejected. M2.7 adds cap/replay/cleanup cases, including active-row safety and
 a concurrent 16-submit cleanup race across two pools. M2.8 adds a real API
 binary restart: 202 follows durable admission, the database cap maps to 503,
-and the same record replays, conflicts, reads and cancels after restart. This is
-correctness evidence, not an exactly-once or throughput claim.
+and the same record replays, conflicts, reads and cancels after restart. M2.9
+then ages that canceled record outside the replay window and proves a scheduled
+one-row purge releases capacity. Unit tests cover retry after a purge error,
+single-flight calls and cancellation. This is correctness evidence, not an
+exactly-once or throughput claim.
 
-Next: schedule bounded terminal cleanup without coupling it to worker claims,
-then add append-only lifecycle events.
+Next: add append-only lifecycle events.

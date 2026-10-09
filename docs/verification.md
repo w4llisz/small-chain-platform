@@ -151,3 +151,18 @@ and verifies same-key replay, lookup, changed-payload conflict, cancellation and
 the PostgreSQL backend metric. The server never creates a memory engine in this
 mode. This proves API-process restart persistence, not database disaster
 recovery, scheduled cleanup, exactly-once side effects or throughput.
+
+## M2.9 retention maintenance increment — 2026-10-09
+
+Local, Linux amd64 with Go 1.27.2: `make verify`, the focused maintenance race
+tests, integration-tag compilation/vet and module verification are required
+before submission. Candidate-branch CI runs the real PostgreSQL 16 suite.
+
+The retention runner performs one startup sweep and serial periodic sweeps,
+logs a failed call before retrying on the next cadence, and exits when its
+in-flight store call observes cancellation. The real API process case ages a
+canceled record outside the configured replay window, waits for the scheduled
+bounded purge to release a one-record cap, and then requires clean SIGTERM
+shutdown. Readiness remains tied to draining/database connectivity rather than
+the previous maintenance result. No retention throughput or production cadence
+claim is made.

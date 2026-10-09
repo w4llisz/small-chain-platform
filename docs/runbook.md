@@ -38,7 +38,7 @@ with a unique owner:
 ```sh
 export DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_test?sslmode=disable'
 make migrate
-go run ./cmd/small-chain -storage=postgres
+go run ./cmd/small-chain -storage=postgres -retention-interval=1m -retention-batch=100
 # In another terminal:
 go run ./cmd/small-chain-worker -owner=worker-a
 ```
@@ -49,16 +49,20 @@ worker's recovery sweep. `make test-integration` automates the two-process kill
 case and the durable HTTP restart case against disposable schemas.
 
 The durable store defaults to 10,000 retained rows and a 24-hour minimum replay
-window. Replays continue after that window until `PurgeTerminal` is invoked;
-M2.7 intentionally does not hide cleanup in the worker. Only terminal jobs are
-eligible. Capacity errors therefore mean an operator must inspect retention and
-run bounded cleanup through the store integration path, not delete active rows.
-The memory-only `-max-jobs` flag does not configure the shared PostgreSQL policy.
+window. Replays continue after that window until a purge succeeds. The API runs
+one bounded purge at startup and every minute by default; change
+`-retention-interval` and `-retention-batch`, or use interval zero to disable it.
+Only terminal jobs are eligible, and workers never run cleanup. Successful
+nonempty sweeps log `maintenance.retention_purged`; failures log
+`maintenance.retention_failed` and retry on the next cadence without flapping
+readiness. The memory-only `-max-jobs` flag does not configure the shared
+PostgreSQL policy.
 
 ## Troubleshooting
 
 - **429:** inspect queue and retrying jobs. Reduce load; adjust workers using measured resource use. More queue capacity only permits more waiting.
-- **503 record_capacity:** in memory mode, restart only if discarding demo history is acceptable. In PostgreSQL mode, inspect the shared cap/replay window and invoke bounded terminal cleanup; never delete active rows to make room.
+- **503 record_capacity:** in memory mode, restart only if discarding demo history is acceptable. In PostgreSQL mode, inspect the shared cap/replay window and retention logs. Capacity remains full while records are active or inside the replay window; never delete active rows to make room.
+- **Repeated retention failures:** check `maintenance.retention_failed`, database connectivity and permissions. Readiness reports the current database ping independently; fixing the cause lets the next cadence retry without restarting.
 - **Stuck work:** inspect timeout/attempt/state. Executors must honor context; Go cannot preempt arbitrary task functions.
 - **Missing HTTP records after restart:** expected only in default memory mode. Start with `-storage=postgres` and the same migrated `DATABASE_URL` for durable records.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.

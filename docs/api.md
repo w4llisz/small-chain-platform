@@ -48,7 +48,7 @@ A job contains `id`, normalized `spec`, `state`, `attempts`, `created_at`, `upda
 | 413 | `body_too_large` | Reduce body |
 | 429 | `queue_full` | Same-key retry with bounded client backoff; `Retry-After: 1` |
 | 503 | `draining` | Stop submitting to this process |
-| 503 | `record_capacity` | Memory: full until restart. PostgreSQL: inspect retention and run bounded cleanup |
+| 503 | `record_capacity` | Memory: full until restart. PostgreSQL: inspect the cap, replay window and scheduled-retention logs |
 | 500 | `internal_error` | Inspect logs; retry using same key |
 
 The standard router supplies plain-text 404/405 for unmatched routes/methods; structured errors apply to application routes. Successful cancel marks state and signals context; it cannot undo external side effects. Cancel after success/failure returns 409; repeated cancellation returns 200.

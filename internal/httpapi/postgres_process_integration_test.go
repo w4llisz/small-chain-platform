@@ -81,6 +81,21 @@ func TestPostgresHTTPPersistsAdmissionAcrossRestart(t *testing.T) {
 	if err := json.Unmarshal(body, &persisted); err != nil || status != http.StatusOK || persisted.State != jobs.Canceled {
 		t.Fatalf("persisted cancel: status=%d job=%+v err=%v body=%s", status, persisted, err, body)
 	}
+	ageJobForRetention(t, dsn, admitted.ID)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		status, body, header = httpRequest(t, http.MethodPost, base+"/v1/jobs", "after-retention", spec)
+		if status == http.StatusAccepted && header.Get("Idempotency-Replayed") == "false" {
+			break
+		}
+		if status != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"record_capacity"`)) {
+			t.Fatalf("submit while waiting for retention: %d %s", status, body)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("scheduled retention did not release capacity: %s", second.output.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	status, body, _ = httpRequest(t, http.MethodGet, base+"/metrics", "", "")
 	if status != http.StatusOK || !bytes.Contains(body, []byte(`small_chain_backend_info{storage="postgres"} 1`)) {
 		t.Fatalf("postgres metrics: %d %s", status, body)
@@ -201,7 +216,7 @@ func TestSynchronizedProcessLogCapture(t *testing.T) {
 func startAPIProcess(t *testing.T, binary, dsn string) *apiProcess {
 	t.Helper()
 	process := &apiProcess{done: make(chan struct{})}
-	process.cmd = exec.Command(binary, "-storage=postgres", "-addr=127.0.0.1:0", "-shutdown-grace=2s")
+	process.cmd = exec.Command(binary, "-storage=postgres", "-addr=127.0.0.1:0", "-shutdown-grace=2s", "-retention-interval=50ms", "-retention-batch=1")
 	process.cmd.Env = environmentWithDatabaseURL(dsn)
 	process.cmd.Stdout = &process.output
 	process.cmd.Stderr = &process.output
@@ -227,6 +242,26 @@ func startAPIProcess(t *testing.T, binary, dsn string) *apiProcess {
 		}
 	})
 	return process
+}
+
+func ageJobForRetention(t *testing.T, dsn, id string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	connection, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(ctx)
+	command, err := connection.Exec(ctx, `UPDATE jobs
+SET updated_at = statement_timestamp() - interval '2 hours'
+WHERE id = $1 AND state = 'canceled'`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.RowsAffected() != 1 {
+		t.Fatalf("aged rows = %d, want 1", command.RowsAffected())
+	}
 }
 
 func (p *apiProcess) address(t *testing.T) string {
