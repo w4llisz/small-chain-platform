@@ -1,4 +1,4 @@
-# PostgreSQL durable core (M2.1–M2.9)
+# PostgreSQL durable core (M2.1–M2.10)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
@@ -9,6 +9,7 @@ state writes, expired-lease transitions, a shared admission cap and terminal
 retention. `cmd/small-chain -storage=postgres` exposes the same submit/get/cancel
 HTTP contract directly on this store, while the default mode remains memory.
 The API owns a bounded terminal-retention cadence; workers do not run cleanup.
+Submission and claim transitions also write retained lifecycle events atomically.
 
 ## Reproduce
 
@@ -131,6 +132,27 @@ M2.3 consumes that token, and M2.4 provides the explicit sweep that releases an
 expired running row. `ClaimDue` does not silently recover it. This distinction is
 important for scheduling and observing recovery work.
 
+## Event protocol
+
+- A newly inserted job and its `submitted` event use the same admission
+  transaction. Same-key replay and conflict add no event.
+- Claiming updates the job and inserts a `claimed` event from the updated row in
+  one data-modifying CTE statement. The event records attempt, owner and fencing
+  version; `(job_id, lease_version)` is unique for claimed events.
+- Event IDs provide stable per-job ordering. Existing rows receive only a
+  backfilled submission event at their stored creation time; unknown historical
+  transitions are not fabricated.
+- Events are immutable through the store API while retained, but terminal job
+  cleanup cascades to their history. This is operational lifecycle evidence,
+  not a permanent compliance audit log.
+- An event write failure aborts its state transaction. Real-database tests inject
+  such failures and verify admission, the shared capacity counter, claim state,
+  attempt and lease version all roll back.
+
+Outcome, retry, recovery and cancellation events, plus paginated reads, remain
+planned. Heartbeats will not become events because their frequency would turn
+the history into an unbounded lease-renewal log.
+
 ## Lifecycle protocol
 
 - `Heartbeat` conditionally extends an unexpired running lease from database
@@ -220,6 +242,9 @@ and the same record replays, conflicts, reads and cancels after restart. M2.9
 then ages that canceled record outside the replay window and proves a scheduled
 one-row purge releases capacity. Unit tests cover retry after a purge error,
 single-flight calls and cancellation. This is correctness evidence, not an
-exactly-once or throughput claim.
+exactly-once or throughput claim. M2.10 adds migration backfill, event failure
+injection, one-event idempotent admission and unique claim events across two
+concurrent pools.
 
-Next: add append-only lifecycle events.
+Next: add fenced outcome, retry, recovery and cancellation events before exposing
+cursor-paginated event reads.

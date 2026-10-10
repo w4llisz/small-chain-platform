@@ -158,6 +158,12 @@ func (s *Store) Submit(ctx context.Context, key string, spec jobs.Spec) (jobs.Jo
 	if err != nil {
 		return jobs.Job{}, false, fmt.Errorf("admit job: %w", err)
 	}
+	if !replay {
+		if _, err := tx.Exec(ctx, `INSERT INTO job_events (job_id, kind, attempt, created_at)
+VALUES ($1, 'submitted', 0, $2)`, j.ID, j.CreatedAt); err != nil {
+			return jobs.Job{}, false, fmt.Errorf("record submitted event: %w", err)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return jobs.Job{}, false, fmt.Errorf("commit admission (retry same key): %w", err)
 	}

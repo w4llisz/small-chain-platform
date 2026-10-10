@@ -11,7 +11,7 @@ Base URL: `http://127.0.0.1:8080`. Local trusted use; no authentication. Bodies 
 | `GET /readyz` | 200 / 503 | Admission enabled / draining |
 | `GET /metrics` | 200 | Prometheus text exposition |
 
-Readiness reflects lifecycle and, in PostgreSQL mode, database connectivity; it does not predict instantaneous queue occupancy or retention capacity. There is no job-list endpoint yet; retain returned IDs. M3 adds cursor pagination and filters.
+Readiness reflects lifecycle and, in PostgreSQL mode, database connectivity; it does not predict instantaneous queue occupancy or retention capacity. There is no job-list or job-event endpoint yet; retain returned IDs. M3 adds cursor pagination and filters.
 
 ## Submit
 

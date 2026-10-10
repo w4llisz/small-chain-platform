@@ -73,11 +73,17 @@ WITH candidates AS (
     WHERE j.id = c.id
     RETURNING j.id, j.spec, j.state, j.attempts, j.result, j.error, j.created_at, j.updated_at,
               j.lease_owner, j.lease_version, j.lease_expires_at, j.available_at
+), evented AS (
+    INSERT INTO job_events (job_id, kind, attempt, lease_owner, lease_version, created_at)
+    SELECT id, 'claimed', attempts, lease_owner, lease_version, updated_at
+    FROM claimed
+    RETURNING job_id, lease_version
 )
-SELECT id, spec, state, attempts, result, error, created_at, updated_at,
-       lease_owner, lease_version, lease_expires_at
-FROM claimed
-ORDER BY available_at, id`, limit, owner, lease.Microseconds())
+SELECT c.id, c.spec, c.state, c.attempts, c.result, c.error, c.created_at, c.updated_at,
+       c.lease_owner, c.lease_version, c.lease_expires_at
+FROM claimed AS c
+JOIN evented AS e ON e.job_id = c.id AND e.lease_version = c.lease_version
+ORDER BY c.available_at, c.id`, limit, owner, lease.Microseconds())
 	if err != nil {
 		return nil, fmt.Errorf("claim due jobs: %w", err)
 	}

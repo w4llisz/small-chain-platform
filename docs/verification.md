@@ -166,3 +166,17 @@ bounded purge to release a one-record cap, and then requires clean SIGTERM
 shutdown. Readiness remains tied to draining/database connectivity rather than
 the previous maintenance result. No retention throughput or production cadence
 claim is made.
+
+## M2.10 transactional event foundation — 2026-10-10
+
+Local, Linux amd64 with Go 1.27.2: `make verify`, integration-tag compilation,
+integration-tag vet and module verification are required before submission. The
+real PostgreSQL 16 suite remains the candidate-branch CI gate.
+
+Migration `0006_job_events.sql` backfills only the provable admission event for
+older rows. New admissions write one event even under 32-way same-key
+concurrency, and two concurrent claimers write one event for each of 24 distinct
+fencing versions. Failure-injection triggers make submitted or claimed event
+inserts fail; the tests require the corresponding job row/capacity counter or
+claim state/attempt/version to remain unchanged. Outcome events and event reads
+are not yet implemented, and no event throughput claim is made.

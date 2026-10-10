@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and M2.9 durable HTTP/worker mode are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup and cancellation use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. Append-only events, tracing and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup and cancellation use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2.10 now records submission and claim events atomically; outcome events and their read API, tracing and a React console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -58,6 +58,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Bounded retention | Cap on retained jobs and keys; new keys rejected at capacity; existing keys still replay |
 | Durable HTTP contract | Optional PostgreSQL mode returns 202 only after commit; replay, conflict, capacity and restart behavior are process-tested |
 | Retention maintenance | Startup and periodic bounded terminal cleanup; serial sweeps, retrying error logs and cancellation before pool close |
+| Atomic lifecycle history | PostgreSQL submission and claim events commit or roll back with their job transition; replay does not duplicate history |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
@@ -133,6 +134,7 @@ workers only with unique owners.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
 - PostgreSQL mode currently exposes HTTP counters and a backend identity metric; its job/attempt gauges are not fabricated from process-local state. Durable metrics, percentile histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.
+- PostgreSQL currently records submission and claim history only. Outcome/recovery/cancel events and a paginated event endpoint remain planned; retained events are deleted with their job during bounded terminal cleanup.
 
 The target portfolio release is a **Go + PostgreSQL job platform with a small React/TypeScript operations console**, backed by failure-recovery tests and reproducible measurements. See [milestones](docs/roadmap.md) and [design decisions](docs/architecture.md).
 

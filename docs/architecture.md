@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth; M2.9 owns the retention cadence in that API process.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth; M2.9 owns the retention cadence in that API process. M2.10 begins transactionally consistent lifecycle history with submission and claim events.
 
 ## State machine
 
@@ -226,17 +226,40 @@ single-flight execution and context cancellation. The real API process test
 ages a canceled row outside the replay window and proves the scheduled sweep
 releases a one-row capacity limit before SIGTERM exits cleanly.
 
-## M2 remainder: events (planned)
+## M2.10: transactional event foundation (implemented)
+
+Migration `0006_job_events.sql` adds retained, append-only lifecycle history.
+Each newly created job receives exactly one `submitted` event; replay and
+conflict do not create another. Each successful claim receives one `claimed`
+event keyed by `(job_id, lease_version)`, carrying the persisted attempt and
+owner. The claim update and event insert are data-modifying CTEs in the same
+statement and transaction. If either side fails, neither becomes visible.
+
+The migration backfills a `submitted` event at the original `jobs.created_at`
+for existing rows, because that is the only transition timestamp the schema can
+prove. It deliberately does not invent historical claims or outcomes. Events
+use monotonic IDs for stable per-job ordering and are removed by the existing
+job retention transaction through `ON DELETE CASCADE`; “append-only” therefore
+means no in-place mutation during the retained job lifetime, not an eternal
+audit archive.
+
+Failure-injection integration tests reject event inserts and require the job
+insert, shared capacity counter, claim state, attempt and fencing version all to
+roll back. Concurrent admission and two-pool claims require one submission
+event and one unique claim event per lease version. Outcome, retry, recovery and
+cancellation events remain the next increment; no event read API exists yet.
+
+## M2 remainder: complete event coverage and reads (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 
-Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. A singleton row bounds retained records and defines replay retention. Append-only `job_events` remain planned. Tenant scoping is deferred until authentication exists.
+Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. A singleton row bounds retained records and defines replay retention. `job_events` currently covers admission and claims. Tenant scoping is deferred until authentication exists.
 
 Use partial indexes restricted to eligible queued/retrying states and running leases, with deterministic `(available_at, id)` claim ordering. Validate with `EXPLAIN (ANALYZE, BUFFERS)` on representative distributions before claiming an optimization. Bound the Go connection pool and transaction/statement timeouts; never hold a database transaction during task execution or backoff.
 
 Claim protocol:
 
-1. **Implemented except events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, and set expiry. Commit before execution.
+1. **Implemented with events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, set expiry and insert the matching claim event. Commit before execution.
 2. **Implemented in the worker package:** execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
 3. **Implemented except events:** finish with a conditional update on ID, owner, version, running state and unexpired lease. Stale completion affects zero rows.
 4. **Implemented as store operations:** on attempt failure, set `available_at` and clear the lease atomically. A bounded concurrent-safe sweep recovers expired leases using the persisted attempt limit and advances the fencing version.

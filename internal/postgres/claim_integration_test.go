@@ -76,6 +76,14 @@ func TestClaimDueConcurrent(t *testing.T) {
 	if len(seen) != total {
 		t.Fatalf("unique claimed jobs=%d, want %d", len(seen), total)
 	}
+	var claimedEvents, uniqueClaimEvents int
+	if err := store.pool.QueryRow(context.Background(), `SELECT count(*), count(DISTINCT (job_id, lease_version))
+FROM job_events WHERE kind = 'claimed'`).Scan(&claimedEvents, &uniqueClaimEvents); err != nil {
+		t.Fatal(err)
+	}
+	if claimedEvents != total || uniqueClaimEvents != total {
+		t.Fatalf("claimed events=%d unique=%d, want %d", claimedEvents, uniqueClaimEvents, total)
+	}
 	claimed, err := store.ClaimDue(context.Background(), "worker-c", total, 30*time.Second)
 	if err != nil || len(claimed) != 0 {
 		t.Fatalf("running jobs reclaimed: %d, %v", len(claimed), err)
