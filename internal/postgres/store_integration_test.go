@@ -361,7 +361,7 @@ func TestUncommittedWinner(t *testing.T) {
 			if _, err := tx.Exec(context.Background(), "INSERT INTO jobs (id,idempotency_key,request_fingerprint,spec,max_attempts) VALUES ($1,$2,$3,$4,$5)", winnerID, "contended", fingerprint[:], string(encoded), spec.MaxAttempts); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := tx.Exec(context.Background(), "INSERT INTO job_events (job_id,kind,attempt) VALUES ($1,'submitted',0)", winnerID); err != nil {
+			if _, err := tx.Exec(context.Background(), "INSERT INTO job_events (job_id,kind,state,attempt) VALUES ($1,'submitted','queued',0)", winnerID); err != nil {
 				t.Fatal(err)
 			}
 			type outcome struct {
