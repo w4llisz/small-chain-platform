@@ -169,9 +169,9 @@ claim is made.
 
 ## M2.10 transactional event foundation — 2026-10-10
 
-Local, Linux amd64 with Go 1.27.2: `make verify`, integration-tag compilation,
-integration-tag vet and module verification are required before submission. The
-real PostgreSQL 16 suite remains the candidate-branch CI gate.
+Local, Linux amd64 with Go 1.27.2: `make verify`, a 10-second normalization fuzz
+run, integration-tag compilation/vet and `go mod verify` passed. The real
+PostgreSQL 16 suite remains the candidate-branch CI gate.
 
 Migration `0006_job_events.sql` backfills only the provable admission event for
 older rows. New admissions write one event even under 32-way same-key
@@ -180,3 +180,19 @@ fencing versions. Failure-injection triggers make submitted or claimed event
 inserts fail; the tests require the corresponding job row/capacity counter or
 claim state/attempt/version to remain unchanged. Outcome events and event reads
 are not yet implemented, and no event throughput claim is made.
+
+## M2.11 complete lifecycle events — 2026-10-11
+
+Local, Linux amd64 with Go 1.27.2: `make verify`, integration-tag compilation,
+integration-tag vet and module verification are required before submission. The
+real PostgreSQL 16 suite remains the candidate-branch CI gate.
+
+Migration `0007_outcome_events.sql` adds resulting-state and bounded-message
+evidence plus uniqueness constraints for worker outcomes, recovery fences and
+terminal transitions. Success, retry scheduling, worker failure, expired-lease
+recovery and cancellation now insert an event in the same statement as their
+state update; heartbeats remain intentionally absent. Integration tests inject
+a rejected success event and require the job to stay running, count concurrent
+recovery events, and require a completion/cancel race to produce exactly one
+terminal event. Paginated reads and event throughput measurements are not yet
+implemented.

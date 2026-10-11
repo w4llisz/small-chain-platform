@@ -4,12 +4,46 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 )
+
+type storedEvent struct {
+	kind         string
+	state        jobs.State
+	attempt      int
+	leaseOwner   sql.NullString
+	leaseVersion sql.NullInt64
+	message      sql.NullString
+}
+
+func readEvents(t *testing.T, store *Store, jobID string) []storedEvent {
+	t.Helper()
+	rows, err := store.pool.Query(context.Background(), `SELECT kind, state, attempt,
+       lease_owner, lease_version, message
+FROM job_events WHERE job_id = $1 ORDER BY id`, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var events []storedEvent
+	for rows.Next() {
+		var event storedEvent
+		if err := rows.Scan(&event.kind, &event.state, &event.attempt,
+			&event.leaseOwner, &event.leaseVersion, &event.message); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return events
+}
 
 func TestEventMigrationBackfillsAdmissionOnly(t *testing.T) {
 	store, _ := database(t)
@@ -40,15 +74,86 @@ func TestEventMigrationBackfillsAdmissionOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	var kind string
+	var state jobs.State
 	var attempt int
 	var sameTimestamp bool
-	if err := store.pool.QueryRow(context.Background(), `SELECT e.kind, e.attempt, e.created_at = j.created_at
+	if err := store.pool.QueryRow(context.Background(), `SELECT e.kind, e.state, e.attempt, e.created_at = j.created_at
 FROM job_events AS e JOIN jobs AS j ON j.id = e.job_id
-WHERE j.idempotency_key = 'before-events'`).Scan(&kind, &attempt, &sameTimestamp); err != nil {
+WHERE j.idempotency_key = 'before-events'`).Scan(&kind, &state, &attempt, &sameTimestamp); err != nil {
 		t.Fatal(err)
 	}
-	if kind != "submitted" || attempt != 0 || !sameTimestamp {
-		t.Fatalf("backfilled event kind=%q attempt=%d same_timestamp=%t", kind, attempt, sameTimestamp)
+	if kind != "submitted" || state != jobs.Queued || attempt != 0 || !sameTimestamp {
+		t.Fatalf("backfilled event kind=%q state=%q attempt=%d same_timestamp=%t", kind, state, attempt, sameTimestamp)
+	}
+}
+
+func TestLifecycleEventsRecordOutcomesWithoutHeartbeats(t *testing.T) {
+	store, _ := database(t)
+	migrate(t, store)
+
+	completed := submitAndClaim(t, store, "events-complete", jobs.Spec{Kind: "demo.checksum"})
+	if _, err := store.Heartbeat(context.Background(), completed, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(readEvents(t, store, completed.Job.ID)); got != 2 {
+		t.Fatalf("events after heartbeat=%d, want submission and claim only", got)
+	}
+	if _, err := store.Complete(context.Background(), completed, "done"); err != nil {
+		t.Fatal(err)
+	}
+	events := readEvents(t, store, completed.Job.ID)
+	if len(events) != 3 || events[2].kind != "succeeded" || events[2].state != jobs.Succeeded ||
+		events[2].attempt != 1 || events[2].leaseOwner.String != completed.Owner ||
+		events[2].leaseVersion.Int64 != completed.Version || events[2].message.Valid {
+		t.Fatalf("completion events: %+v", events)
+	}
+
+	first := submitAndClaim(t, store, "events-retry", jobs.Spec{Kind: "demo.checksum", MaxAttempts: 2})
+	if _, err := store.FailAttempt(context.Background(), first, "try again", 0); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := store.ClaimDue(context.Background(), "events-retry-worker", 1, time.Minute)
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("retry claim: %+v, %v", claims, err)
+	}
+	if _, err := store.FailAttempt(context.Background(), claims[0], "budget exhausted", 0); err != nil {
+		t.Fatal(err)
+	}
+	events = readEvents(t, store, first.Job.ID)
+	if len(events) != 5 || events[2].kind != "retry_scheduled" || events[2].state != jobs.Retrying ||
+		events[2].message.String != "try again" || events[4].kind != "failed" ||
+		events[4].state != jobs.Failed || events[4].message.String != "budget exhausted" {
+		t.Fatalf("retry events: %+v", events)
+	}
+
+	recovered := submitAndClaim(t, store, "events-recovery", jobs.Spec{Kind: "demo.checksum", MaxAttempts: 2})
+	expireLease(t, store, recovered.Job.ID)
+	if got, err := store.RecoverExpired(context.Background(), 1, 0); err != nil || len(got) != 1 {
+		t.Fatalf("recover: %+v, %v", got, err)
+	}
+	events = readEvents(t, store, recovered.Job.ID)
+	if len(events) != 3 || events[2].kind != "lease_recovered" || events[2].state != jobs.Retrying ||
+		events[2].leaseOwner.String != recovered.Owner ||
+		events[2].leaseVersion.Int64 != recovered.Version+1 ||
+		events[2].message.String != leaseExpiredMessage {
+		t.Fatalf("recovery events: %+v", events)
+	}
+
+	canceled, _, err := store.Submit(context.Background(), "events-cancel", jobs.Spec{Kind: "demo.checksum"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Cancel(context.Background(), canceled.ID, "operator request"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Cancel(context.Background(), canceled.ID, "ignored replay"); err != nil {
+		t.Fatal(err)
+	}
+	events = readEvents(t, store, canceled.ID)
+	if len(events) != 2 || events[1].kind != "canceled" || events[1].state != jobs.Canceled ||
+		events[1].attempt != 0 || events[1].leaseOwner.Valid ||
+		events[1].leaseVersion.Int64 != 1 || events[1].message.String != "operator request" {
+		t.Fatalf("cancellation events: %+v", events)
 	}
 }
 
@@ -123,5 +228,24 @@ FROM job_events WHERE job_id = $1 AND kind = 'claimed'`, job.ID).Scan(&kind, &at
 	}
 	if kind != "claimed" || attempts != 1 || owner != "event-worker" || version != claims[0].Version {
 		t.Fatalf("claimed event kind=%q attempt=%d owner=%q version=%d", kind, attempts, owner, version)
+	}
+	if _, err := store.pool.Exec(context.Background(), `CREATE TRIGGER reject_succeeded_event
+BEFORE INSERT ON job_events FOR EACH ROW WHEN (NEW.kind = 'succeeded')
+EXECUTE FUNCTION reject_test_event()`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Complete(context.Background(), claims[0], "must roll back"); err == nil {
+		t.Fatal("completion succeeded without its event")
+	}
+	var result sql.NullString
+	if err := store.pool.QueryRow(context.Background(), `SELECT state, result
+FROM jobs WHERE id = $1`, job.ID).Scan(&state, &result); err != nil {
+		t.Fatal(err)
+	}
+	if state != jobs.Running || result.Valid {
+		t.Fatalf("completion rollback state=%s result=%v", state, result)
+	}
+	if got := len(readEvents(t, store, job.ID)); got != 2 {
+		t.Fatalf("events after rejected completion=%d, want submitted and claimed", got)
 	}
 }

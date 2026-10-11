@@ -145,6 +145,14 @@ func TestRecoverExpiredConcurrentSweepersRecoverEachJobOnce(t *testing.T) {
 	if len(seen) != total {
 		t.Fatalf("unique recovered jobs=%d, want %d", len(seen), total)
 	}
+	var recoveryEvents, uniqueRecoveryEvents int
+	if err := store.pool.QueryRow(context.Background(), `SELECT count(*), count(DISTINCT (job_id, lease_version))
+FROM job_events WHERE kind = 'lease_recovered'`).Scan(&recoveryEvents, &uniqueRecoveryEvents); err != nil {
+		t.Fatal(err)
+	}
+	if recoveryEvents != total || uniqueRecoveryEvents != total {
+		t.Fatalf("recovery events=%d unique=%d, want %d", recoveryEvents, uniqueRecoveryEvents, total)
+	}
 	if recovered, err := store.RecoverExpired(context.Background(), total, 0); err != nil || len(recovered) != 0 {
 		t.Fatalf("jobs recovered twice: %+v, %v", recovered, err)
 	}

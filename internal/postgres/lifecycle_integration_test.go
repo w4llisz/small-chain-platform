@@ -249,6 +249,11 @@ func TestCompletionCancelRaceHasOneTerminalWinner(t *testing.T) {
 	if err != nil || (got.State != jobs.Succeeded && got.State != jobs.Canceled) {
 		t.Fatalf("terminal race result: %+v, %v", got, err)
 	}
+	events := readEvents(t, store, claim.Job.ID)
+	if len(events) != 3 || events[2].state != got.State ||
+		(events[2].kind != "succeeded" && events[2].kind != "canceled") {
+		t.Fatalf("terminal race events: %+v", events)
+	}
 }
 
 func TestLifecycleValidationAndCancellation(t *testing.T) {

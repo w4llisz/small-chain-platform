@@ -23,6 +23,8 @@ var (
 	validJobID    = regexp.MustCompile(`^[0-9a-f]{32}$`)
 )
 
+const updatedJobColumns = "u.id, u.spec, u.state, u.attempts, u.result, u.error, u.created_at, u.updated_at"
+
 // Heartbeat extends an unexpired lease using database time. It cannot revive an
 // expired lease, and owner/version mismatches are reported as ErrStaleLease.
 func (s *Store) Heartbeat(ctx context.Context, claim Claim, lease time.Duration) (Claim, error) {
@@ -59,12 +61,22 @@ func (s *Store) Complete(ctx context.Context, claim Claim, result string) (jobs.
 	if !utf8.ValidString(result) || len(result) > maxResultBytes {
 		return jobs.Job{}, fmt.Errorf("%w: result must be valid UTF-8 and at most %d bytes", jobs.ErrInvalid, maxResultBytes)
 	}
-	return s.finish(ctx, claim, `UPDATE jobs
-SET state = 'succeeded', result = $4, error = NULL,
-    lease_owner = NULL, lease_expires_at = NULL, updated_at = statement_timestamp()
-WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
-  AND state = 'running' AND lease_expires_at > statement_timestamp()
-RETURNING `+jobColumns, result)
+	return s.finish(ctx, claim, `WITH updated AS (
+    UPDATE jobs
+    SET state = 'succeeded', result = $4, error = NULL,
+        lease_owner = NULL, lease_expires_at = NULL, updated_at = statement_timestamp()
+    WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
+      AND state = 'running' AND lease_expires_at > statement_timestamp()
+    RETURNING `+jobColumns+`
+), evented AS (
+    INSERT INTO job_events
+        (job_id, kind, state, attempt, lease_owner, lease_version, created_at)
+    SELECT id, 'succeeded', state, attempts, $2, $3, updated_at
+    FROM updated
+    RETURNING job_id
+)
+SELECT `+updatedJobColumns+`
+FROM updated AS u JOIN evented AS e ON e.job_id = u.id`, result)
 }
 
 // FailAttempt records an attempt error. Work with remaining attempts becomes
@@ -79,16 +91,27 @@ func (s *Store) FailAttempt(ctx context.Context, claim Claim, message string, re
 	if retryAfter < 0 || retryAfter > maxRetryDelay {
 		return jobs.Job{}, fmt.Errorf("%w: retry delay must be between 0 and %s", jobs.ErrInvalid, maxRetryDelay)
 	}
-	return s.finish(ctx, claim, `UPDATE jobs
-SET state = CASE WHEN attempts < max_attempts THEN 'retrying' ELSE 'failed' END,
-    available_at = CASE WHEN attempts < max_attempts
-        THEN statement_timestamp() + $4::double precision * interval '1 microsecond'
-        ELSE available_at END,
-    result = NULL, error = $5, lease_owner = NULL, lease_expires_at = NULL,
-    updated_at = statement_timestamp()
-WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
-  AND state = 'running' AND lease_expires_at > statement_timestamp()
-RETURNING `+jobColumns, retryAfter.Microseconds(), message)
+	return s.finish(ctx, claim, `WITH updated AS (
+    UPDATE jobs
+    SET state = CASE WHEN attempts < max_attempts THEN 'retrying' ELSE 'failed' END,
+        available_at = CASE WHEN attempts < max_attempts
+            THEN statement_timestamp() + $4::double precision * interval '1 microsecond'
+            ELSE available_at END,
+        result = NULL, error = $5, lease_owner = NULL, lease_expires_at = NULL,
+        updated_at = statement_timestamp()
+    WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
+      AND state = 'running' AND lease_expires_at > statement_timestamp()
+    RETURNING `+jobColumns+`
+), evented AS (
+    INSERT INTO job_events
+        (job_id, kind, state, attempt, lease_owner, lease_version, message, created_at)
+    SELECT id, CASE WHEN state = 'retrying' THEN 'retry_scheduled' ELSE 'failed' END,
+           state, attempts, $2, $3, error, updated_at
+    FROM updated
+    RETURNING job_id
+)
+SELECT `+updatedJobColumns+`
+FROM updated AS u JOIN evented AS e ON e.job_id = u.id`, retryAfter.Microseconds(), message)
 }
 
 // FailPermanent records a non-retryable attempt error while the exact lease is
@@ -100,12 +123,22 @@ func (s *Store) FailPermanent(ctx context.Context, claim Claim, message string) 
 	if err := validateMessage(message); err != nil {
 		return jobs.Job{}, err
 	}
-	return s.finish(ctx, claim, `UPDATE jobs
-SET state = 'failed', result = NULL, error = $4,
-    lease_owner = NULL, lease_expires_at = NULL, updated_at = statement_timestamp()
-WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
-  AND state = 'running' AND lease_expires_at > statement_timestamp()
-RETURNING `+jobColumns, message)
+	return s.finish(ctx, claim, `WITH updated AS (
+    UPDATE jobs
+    SET state = 'failed', result = NULL, error = $4,
+        lease_owner = NULL, lease_expires_at = NULL, updated_at = statement_timestamp()
+    WHERE id = $1 AND lease_owner = $2 AND lease_version = $3
+      AND state = 'running' AND lease_expires_at > statement_timestamp()
+    RETURNING `+jobColumns+`
+), evented AS (
+    INSERT INTO job_events
+        (job_id, kind, state, attempt, lease_owner, lease_version, message, created_at)
+    SELECT id, 'failed', state, attempts, $2, $3, error, updated_at
+    FROM updated
+    RETURNING job_id
+)
+SELECT `+updatedJobColumns+`
+FROM updated AS u JOIN evented AS e ON e.job_id = u.id`, message)
 }
 
 // Cancel is an authoritative operator transition, not a worker lease action.
@@ -119,12 +152,22 @@ func (s *Store) Cancel(ctx context.Context, id, reason string) (jobs.Job, error)
 	}
 	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
 	defer cancel()
-	job, err := readJob(s.pool.QueryRow(ctx, `UPDATE jobs
-SET state = 'canceled', result = NULL, error = $2,
-    lease_owner = NULL, lease_expires_at = NULL,
-    lease_version = lease_version + 1, updated_at = statement_timestamp()
-WHERE id = $1 AND state IN ('queued', 'running', 'retrying')
-RETURNING `+jobColumns, id, reason))
+	job, err := readJob(s.pool.QueryRow(ctx, `WITH updated AS (
+    UPDATE jobs
+    SET state = 'canceled', result = NULL, error = $2,
+        lease_owner = NULL, lease_expires_at = NULL,
+        lease_version = lease_version + 1, updated_at = statement_timestamp()
+    WHERE id = $1 AND state IN ('queued', 'running', 'retrying')
+    RETURNING `+jobColumns+`, lease_version
+), evented AS (
+    INSERT INTO job_events
+        (job_id, kind, state, attempt, lease_version, message, created_at)
+    SELECT id, 'canceled', state, attempts, lease_version, error, updated_at
+    FROM updated
+    RETURNING job_id
+)
+SELECT `+updatedJobColumns+`
+FROM updated AS u JOIN evented AS e ON e.job_id = u.id`, id, reason))
 	if err == nil {
 		return job, nil
 	}

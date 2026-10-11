@@ -74,8 +74,8 @@ WITH candidates AS (
     RETURNING j.id, j.spec, j.state, j.attempts, j.result, j.error, j.created_at, j.updated_at,
               j.lease_owner, j.lease_version, j.lease_expires_at, j.available_at
 ), evented AS (
-    INSERT INTO job_events (job_id, kind, attempt, lease_owner, lease_version, created_at)
-    SELECT id, 'claimed', attempts, lease_owner, lease_version, updated_at
+    INSERT INTO job_events (job_id, kind, state, attempt, lease_owner, lease_version, created_at)
+    SELECT id, 'claimed', state, attempts, lease_owner, lease_version, updated_at
     FROM claimed
     RETURNING job_id, lease_version
 )

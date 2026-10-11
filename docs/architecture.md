@@ -4,7 +4,7 @@
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
 
-M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth; M2.9 owns the retention cadence in that API process. M2.10 begins transactionally consistent lifecycle history with submission and claim events.
+M1 is one Go binary with three boundaries: HTTP transport, lifecycle engine, and a cooperative executor function. There is no speculative repository abstraction: a durable scheduler needs transactional claim/finish operations, not generic CRUD. M2.1–M2.7 add durable admission, claims, fencing, recovery, a bounded worker and retention. M2.8 puts the HTTP contract on that store without an in-memory queue as a second source of truth; M2.9 owns the retention cadence in that API process. M2.10 begins transactionally consistent lifecycle history, and M2.11 covers every low-frequency transition.
 
 ## State machine
 
@@ -76,9 +76,9 @@ An ambiguous commit returns no work, so the caller must not execute anything.
 
 Claim alone does **not** make lease expiry actionable: `RecoverExpired` must run
 before an expired row becomes available again. Heartbeat, finish/retry/cancel and
-recovery are implemented store operations. Later increments add worker execution
-and HTTP persistence; append-only events remain planned. This avoids presenting
-a database row lock as end-to-end crash recovery.
+recovery are implemented store operations. Later increments added worker
+execution, HTTP persistence and append-only lifecycle events. This avoids
+presenting a database row lock as end-to-end crash recovery.
 
 ## M2.3: fenced lifecycle writes (implemented; unwired at that increment)
 
@@ -246,14 +246,30 @@ audit archive.
 Failure-injection integration tests reject event inserts and require the job
 insert, shared capacity counter, claim state, attempt and fencing version all to
 roll back. Concurrent admission and two-pool claims require one submission
-event and one unique claim event per lease version. Outcome, retry, recovery and
-cancellation events remain the next increment; no event read API exists yet.
+event and one unique claim event per lease version. No event read API exists yet.
 
-## M2 remainder: complete event coverage and reads (planned)
+## M2.11: complete lifecycle event coverage (implemented)
+
+Migration `0007_outcome_events.sql` adds the resulting state and an optional
+bounded message to each event. Success, scheduled retry, worker failure, expired
+lease recovery and operator cancellation now use a data-modifying CTE that
+inserts evidence from the row changed by that same statement. An event failure
+therefore aborts the state change instead of leaving an unexplained transition.
+
+Worker events retain the owner/version that authorized the change. Recovery
+retains the expired owner and the newly advanced fencing version; cancellation
+retains its new fence. Partial unique indexes enforce one worker outcome per
+lease, one recovery per recovery fence and one terminal event per job. Heartbeat
+renewals remain intentionally absent because they are high-frequency liveness,
+not lifecycle transitions. Integration tests prove completion rollback, unique
+events from concurrent sweepers and exactly one terminal event when completion
+races cancellation.
+
+## M2 remainder: event reads (planned)
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 
-Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. A singleton row bounds retained records and defines replay retention. `job_events` currently covers admission and claims. Tenant scoping is deferred until authentication exists.
+Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. A singleton row bounds retained records and defines replay retention. `job_events` covers every low-frequency lifecycle transition. Tenant scoping is deferred until authentication exists.
 
 Use partial indexes restricted to eligible queued/retrying states and running leases, with deterministic `(available_at, id)` claim ordering. Validate with `EXPLAIN (ANALYZE, BUFFERS)` on representative distributions before claiming an optimization. Bound the Go connection pool and transaction/statement timeouts; never hold a database transaction during task execution or backoff.
 
@@ -261,7 +277,7 @@ Claim protocol:
 
 1. **Implemented with events:** in a short transaction, select due jobs with `FOR UPDATE SKIP LOCKED`, update state, increment attempt and lease version, set expiry and insert the matching claim event. Commit before execution.
 2. **Implemented in the worker package:** execute outside the transaction. Heartbeat only while owner/version still matches. Use database time for lease comparisons.
-3. **Implemented except events:** finish with a conditional update on ID, owner, version, running state and unexpired lease. Stale completion affects zero rows.
+3. **Implemented with events:** finish with a conditional update on ID, owner, version, running state and unexpired lease. Stale completion affects zero rows and writes no event.
 4. **Implemented as store operations:** on attempt failure, set `available_at` and clear the lease atomically. A bounded concurrent-safe sweep recovers expired leases using the persisted attempt limit and advances the fencing version.
 5. **Store and worker fencing implemented:** on cancellation, persist canceled state and increment lease version. Heartbeat loss stops the worker from writing a late result; cancellation cannot undo an external side effect.
 

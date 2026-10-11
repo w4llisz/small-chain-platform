@@ -1,4 +1,4 @@
-# PostgreSQL durable core (M2.1–M2.10)
+# PostgreSQL durable core (M2.1–M2.11)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
@@ -9,7 +9,7 @@ state writes, expired-lease transitions, a shared admission cap and terminal
 retention. `cmd/small-chain -storage=postgres` exposes the same submit/get/cancel
 HTTP contract directly on this store, while the default mode remains memory.
 The API owns a bounded terminal-retention cadence; workers do not run cleanup.
-Submission and claim transitions also write retained lifecycle events atomically.
+Every low-frequency lifecycle transition writes retained evidence atomically.
 
 ## Reproduce
 
@@ -139,6 +139,15 @@ important for scheduling and observing recovery work.
 - Claiming updates the job and inserts a `claimed` event from the updated row in
   one data-modifying CTE statement. The event records attempt, owner and fencing
   version; `(job_id, lease_version)` is unique for claimed events.
+- Worker success, scheduled retry and worker failure record the owner and fencing
+  version that authorized the update. Recovery records the expired owner and the
+  newly advanced version; cancellation records its new fence. Each event also
+  carries the resulting state and a bounded failure/recovery/cancel message when
+  applicable.
+- Outcome, recovery and cancellation inserts are data-modifying CTEs in the same
+  statement as their conditional job update. Partial unique indexes allow only
+  one worker outcome per lease, one recovery per recovery fence and one terminal
+  event per job. A stale or losing transition updates no row and writes no event.
 - Event IDs provide stable per-job ordering. Existing rows receive only a
   backfilled submission event at their stored creation time; unknown historical
   transitions are not fabricated.
@@ -147,11 +156,9 @@ important for scheduling and observing recovery work.
   not a permanent compliance audit log.
 - An event write failure aborts its state transaction. Real-database tests inject
   such failures and verify admission, the shared capacity counter, claim state,
-  attempt and lease version all roll back.
-
-Outcome, retry, recovery and cancellation events, plus paginated reads, remain
-planned. Heartbeats will not become events because their frequency would turn
-the history into an unbounded lease-renewal log.
+  attempt, lease version and completion all roll back.
+- Heartbeats do not become events because their frequency would turn history
+  into an unbounded lease-renewal log. Cursor-paginated reads remain planned.
 
 ## Lifecycle protocol
 
@@ -244,7 +251,9 @@ one-row purge releases capacity. Unit tests cover retry after a purge error,
 single-flight calls and cancellation. This is correctness evidence, not an
 exactly-once or throughput claim. M2.10 adds migration backfill, event failure
 injection, one-event idempotent admission and unique claim events across two
-concurrent pools.
+concurrent pools. M2.11 adds complete low-frequency transition coverage,
+completion rollback injection, unique concurrent recovery evidence and one
+terminal event in a two-connection completion/cancel race.
 
-Next: add fenced outcome, retry, recovery and cancellation events before exposing
-cursor-paginated event reads.
+Next: expose bounded cursor-paginated event reads without weakening retention or
+claim-query isolation.

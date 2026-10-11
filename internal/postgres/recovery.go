@@ -25,25 +25,35 @@ func (s *Store) RecoverExpired(ctx context.Context, limit int, retryAfter time.D
 	defer cancel()
 	rows, err := s.pool.Query(ctx, `
 WITH candidates AS (
-    SELECT id
+    SELECT id, lease_owner
     FROM jobs
     WHERE state = 'running' AND lease_expires_at <= statement_timestamp()
     ORDER BY lease_expires_at, id
     FOR UPDATE SKIP LOCKED
     LIMIT $1
+), updated AS (
+    UPDATE jobs AS j
+    SET state = CASE WHEN j.attempts < j.max_attempts THEN 'retrying' ELSE 'failed' END,
+        available_at = CASE WHEN j.attempts < j.max_attempts
+            THEN statement_timestamp() + $2::double precision * interval '1 microsecond'
+            ELSE j.available_at END,
+        result = NULL, error = $3,
+        lease_owner = NULL, lease_expires_at = NULL,
+        lease_version = j.lease_version + 1,
+        updated_at = statement_timestamp()
+    FROM candidates AS c
+    WHERE j.id = c.id
+    RETURNING j.id, j.spec, j.state, j.attempts, j.result, j.error,
+              j.created_at, j.updated_at, j.lease_version, c.lease_owner
+), evented AS (
+    INSERT INTO job_events
+        (job_id, kind, state, attempt, lease_owner, lease_version, message, created_at)
+    SELECT id, 'lease_recovered', state, attempts, lease_owner, lease_version, error, updated_at
+    FROM updated
+    RETURNING job_id
 )
-UPDATE jobs AS j
-SET state = CASE WHEN j.attempts < j.max_attempts THEN 'retrying' ELSE 'failed' END,
-    available_at = CASE WHEN j.attempts < j.max_attempts
-        THEN statement_timestamp() + $2::double precision * interval '1 microsecond'
-        ELSE j.available_at END,
-    result = NULL, error = $3,
-    lease_owner = NULL, lease_expires_at = NULL,
-    lease_version = j.lease_version + 1,
-    updated_at = statement_timestamp()
-FROM candidates AS c
-WHERE j.id = c.id
-RETURNING j.id, j.spec, j.state, j.attempts, j.result, j.error, j.created_at, j.updated_at`,
+SELECT `+updatedJobColumns+`
+FROM updated AS u JOIN evented AS e ON e.job_id = u.id`,
 		limit, retryAfter.Microseconds(), leaseExpiredMessage)
 	if err != nil {
 		return nil, fmt.Errorf("recover expired leases: %w", err)
