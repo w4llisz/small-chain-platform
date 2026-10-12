@@ -246,7 +246,7 @@ audit archive.
 Failure-injection integration tests reject event inserts and require the job
 insert, shared capacity counter, claim state, attempt and fencing version all to
 roll back. Concurrent admission and two-pool claims require one submission
-event and one unique claim event per lease version. No event read API exists yet.
+event and one unique claim event per lease version.
 
 ## M2.11: complete lifecycle event coverage (implemented)
 
@@ -265,7 +265,23 @@ not lifecycle transitions. Integration tests prove completion rollback, unique
 events from concurrent sweepers and exactly one terminal event when completion
 races cancellation.
 
-## M2 remainder: event reads (planned)
+## M2.12: bounded event reads (implemented)
+
+`ListEvents` uses the existing `(job_id, id)` index for exclusive, forward
+cursor pagination. One `jobs` to `LATERAL job_events` query distinguishes a
+missing job from an existing job with no later events in the same MVCC
+snapshot, including during concurrent retention. It fetches at most one row
+beyond the requested page to decide whether to return `next_cursor`; page size
+is capped at 100.
+
+The HTTP endpoint validates decimal cursors before reaching the database and
+returns event IDs and cursors as strings so JavaScript clients do not lose
+64-bit integer precision. The cursor is an opaque ordering token rather than an
+offset: clients can repeat their last event ID later to observe a newly appended
+transition without re-reading earlier evidence. Memory mode returns an explicit
+501 because it does not retain equivalent history.
+
+## Durable scheduling architecture
 
 Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
 

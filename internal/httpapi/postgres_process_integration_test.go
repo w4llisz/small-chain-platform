@@ -77,6 +77,18 @@ func TestPostgresHTTPPersistsAdmissionAcrossRestart(t *testing.T) {
 	if err := json.Unmarshal(body, &canceled); err != nil || status != http.StatusOK || canceled.ID != admitted.ID || canceled.State != jobs.Canceled {
 		t.Fatalf("restart cancel: status=%d job=%+v err=%v body=%s", status, canceled, err, body)
 	}
+	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs/"+admitted.ID+"/events?limit=1", "", "")
+	var firstEvents postgres.EventPage
+	if err := json.Unmarshal(body, &firstEvents); err != nil || status != http.StatusOK ||
+		len(firstEvents.Events) != 1 || firstEvents.Events[0].Kind != "submitted" || firstEvents.NextCursor == "" {
+		t.Fatalf("first event page: status=%d page=%+v err=%v body=%s", status, firstEvents, err, body)
+	}
+	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs/"+admitted.ID+"/events?limit=1&cursor="+firstEvents.NextCursor, "", "")
+	var secondEvents postgres.EventPage
+	if err := json.Unmarshal(body, &secondEvents); err != nil || status != http.StatusOK ||
+		len(secondEvents.Events) != 1 || secondEvents.Events[0].Kind != "canceled" || secondEvents.NextCursor != "" {
+		t.Fatalf("second event page: status=%d page=%+v err=%v body=%s", status, secondEvents, err, body)
+	}
 	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs/"+admitted.ID, "", "")
 	if err := json.Unmarshal(body, &persisted); err != nil || status != http.StatusOK || persisted.State != jobs.Canceled {
 		t.Fatalf("persisted cancel: status=%d job=%+v err=%v body=%s", status, persisted, err, body)

@@ -194,5 +194,19 @@ recovery and cancellation now insert an event in the same statement as their
 state update; heartbeats remain intentionally absent. Integration tests inject
 a rejected success event and require the job to stay running, count concurrent
 recovery events, and require a completion/cancel race to produce exactly one
-terminal event. Paginated reads and event throughput measurements are not yet
-implemented.
+terminal event. Event throughput measurements are not implemented.
+
+## M2.12 bounded event reads — 2026-10-12
+
+Local, Linux amd64 with Go 1.27.2: `make verify`, integration-tag compilation,
+integration-tag vet and module verification are required before submission. The
+candidate-branch workflow runs the full race-enabled PostgreSQL 16 integration
+suite, including the real API process.
+
+The new store case proves a three-event lifecycle crosses a two-row page without
+duplication, preserves outcome state and fencing fields, returns a non-null
+empty final page, distinguishes a missing job and rejects invalid bounds. The
+process case reads submitted and canceled events through the HTTP cursor across
+a server restart. These checks prove bounded cursor semantics against the
+project's test workload; they do not claim snapshot export across requests,
+indefinite audit retention or measured query throughput.

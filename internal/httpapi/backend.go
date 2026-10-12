@@ -2,15 +2,19 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
 )
 
+var errEventHistoryUnavailable = errors.New("event history requires PostgreSQL storage")
+
 type jobBackend interface {
 	Submit(context.Context, string, jobs.Spec) (jobs.Job, bool, error)
 	Get(context.Context, string) (jobs.Job, error)
 	Cancel(context.Context, string) (jobs.Job, error)
+	ListEvents(context.Context, string, int64, int) (postgres.EventPage, error)
 	Ready(context.Context) error
 	StopAdmission()
 }
@@ -27,6 +31,10 @@ func (m memoryBackend) Get(_ context.Context, id string) (jobs.Job, error) {
 
 func (m memoryBackend) Cancel(_ context.Context, id string) (jobs.Job, error) {
 	return m.engine.Cancel(id)
+}
+
+func (memoryBackend) ListEvents(context.Context, string, int64, int) (postgres.EventPage, error) {
+	return postgres.EventPage{}, errEventHistoryUnavailable
 }
 
 func (m memoryBackend) Ready(context.Context) error {
@@ -50,6 +58,10 @@ func (p postgresBackend) Get(ctx context.Context, id string) (jobs.Job, error) {
 
 func (p postgresBackend) Cancel(ctx context.Context, id string) (jobs.Job, error) {
 	return p.store.Cancel(ctx, id, "canceled by operator")
+}
+
+func (p postgresBackend) ListEvents(ctx context.Context, id string, afterID int64, limit int) (postgres.EventPage, error) {
+	return p.store.ListEvents(ctx, id, afterID, limit)
 }
 
 func (p postgresBackend) Ready(ctx context.Context) error { return p.store.Ping(ctx) }

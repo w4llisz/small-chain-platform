@@ -58,6 +58,19 @@ nonempty sweeps log `maintenance.retention_purged`; failures log
 readiness. The memory-only `-max-jobs` flag does not configure the shared
 PostgreSQL policy.
 
+Inspect one job's retained lifecycle in bounded pages:
+
+```sh
+curl 'http://127.0.0.1:8080/v1/jobs/JOB_ID/events?limit=50'
+# Pass the returned next_cursor verbatim until it is omitted:
+curl 'http://127.0.0.1:8080/v1/jobs/JOB_ID/events?limit=50&cursor=EVENT_ID'
+```
+
+The cursor is exclusive and can be reused later to poll for a newly appended
+transition. An empty `events` array means the job exists but has no later event;
+404 means the job is absent or has already been removed by retention. The
+endpoint is intentionally unavailable in memory mode.
+
 ## Troubleshooting
 
 - **429:** inspect queue and retrying jobs. Reduce load; adjust workers using measured resource use. More queue capacity only permits more waiting.
@@ -65,6 +78,7 @@ PostgreSQL policy.
 - **Repeated retention failures:** check `maintenance.retention_failed`, database connectivity and permissions. Readiness reports the current database ping independently; fixing the cause lets the next cadence retry without restarting.
 - **Stuck work:** inspect timeout/attempt/state. Executors must honor context; Go cannot preempt arbitrary task functions.
 - **Missing HTTP records after restart:** expected only in default memory mode. Start with `-storage=postgres` and the same migrated `DATABASE_URL` for durable records.
+- **Event history returns 501:** start the API with `-storage=postgres`; memory mode does not retain equivalent lifecycle evidence.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Missing traces/percentiles:** planned, not present; duration is sum/count only.
 

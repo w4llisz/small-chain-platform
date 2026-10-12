@@ -5,12 +5,72 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strconv"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 )
+
+func TestListEventsUsesBoundedForwardCursor(t *testing.T) {
+	store, _ := database(t)
+	migrate(t, store)
+	claim := submitAndClaim(t, store, "event-page", jobs.Spec{Kind: "demo.checksum"})
+	if _, err := store.Complete(context.Background(), claim, "done"); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := store.ListEvents(context.Background(), claim.Job.ID, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Events) != 2 || first.Events[0].Kind != "submitted" ||
+		first.Events[1].Kind != "claimed" || first.NextCursor == "" {
+		t.Fatalf("first page: %+v", first)
+	}
+	cursor, err := strconv.ParseInt(first.NextCursor, 10, 64)
+	if err != nil || first.NextCursor != first.Events[1].ID {
+		t.Fatalf("cursor=%q events=%+v err=%v", first.NextCursor, first.Events, err)
+	}
+	second, err := store.ListEvents(context.Background(), claim.Job.ID, cursor, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Events) != 1 || second.Events[0].Kind != "succeeded" ||
+		second.Events[0].State != jobs.Succeeded || second.Events[0].LeaseOwner != claim.Owner ||
+		second.Events[0].LeaseVersion != claim.Version || second.NextCursor != "" {
+		t.Fatalf("second page: %+v", second)
+	}
+	lastID, err := strconv.ParseInt(second.Events[0].ID, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty, err := store.ListEvents(context.Background(), claim.Job.ID, lastID, 2)
+	if err != nil || len(empty.Events) != 0 || empty.Events == nil || empty.NextCursor != "" {
+		t.Fatalf("empty page: %+v err=%v", empty, err)
+	}
+
+	if _, err := store.ListEvents(context.Background(), strings.Repeat("a", 32), 0, 1); !errors.Is(err, jobs.ErrNotFound) {
+		t.Fatalf("missing job: %v", err)
+	}
+	for _, test := range []struct {
+		id     string
+		cursor int64
+		limit  int
+	}{
+		{"bad", 0, 1},
+		{claim.Job.ID, -1, 1},
+		{claim.Job.ID, 0, 0},
+		{claim.Job.ID, 0, MaxEventPageSize + 1},
+	} {
+		if _, err := store.ListEvents(context.Background(), test.id, test.cursor, test.limit); !errors.Is(err, jobs.ErrInvalid) {
+			t.Fatalf("id=%q cursor=%d limit=%d: %v", test.id, test.cursor, test.limit, err)
+		}
+	}
+}
 
 type storedEvent struct {
 	kind         string

@@ -56,6 +56,9 @@ func TestHTTPContract(t *testing.T) {
 		status                  int
 	}{
 		{"GET", location, "", "", 200},
+		{"GET", location + "/events", "", "", 501},
+		{"GET", location + "/events?cursor=-1", "", "", 400},
+		{"GET", location + "/events?limit=101", "", "", 400},
 		{"POST", "/v1/jobs", "one", `{"kind":"demo.checksum","payload":"changed"}`, 409},
 		{"POST", "/v1/jobs", "", body, 400},
 		{"POST", "/v1/jobs", "bad", "{", 400},

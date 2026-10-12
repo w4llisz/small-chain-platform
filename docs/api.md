@@ -6,12 +6,29 @@ Base URL: `http://127.0.0.1:8080`. Local trusted use; no authentication. Bodies 
 | --- | --- | --- |
 | `POST /v1/jobs` | 202 new / 200 replay | Submit with required `Idempotency-Key` |
 | `GET /v1/jobs/{id}` | 200 | Read snapshot |
+| `GET /v1/jobs/{id}/events` | 200 | Read PostgreSQL lifecycle history with a forward cursor |
 | `POST /v1/jobs/{id}/cancel` | 200 | Cancel queued/running/retrying; repeated cancel succeeds |
 | `GET /healthz` | 200 | HTTP process responsive |
 | `GET /readyz` | 200 / 503 | Admission enabled / draining |
 | `GET /metrics` | 200 | Prometheus text exposition |
 
-Readiness reflects lifecycle and, in PostgreSQL mode, database connectivity; it does not predict instantaneous queue occupancy or retention capacity. There is no job-list or job-event endpoint yet; retain returned IDs. M3 adds cursor pagination and filters.
+Readiness reflects lifecycle and, in PostgreSQL mode, database connectivity; it does not predict instantaneous queue occupancy or retention capacity. There is no job-list endpoint yet; retain returned IDs. M3 adds list pagination and filters.
+
+## Event history
+
+`GET /v1/jobs/{id}/events?limit=50&cursor=EVENT_ID` is available in PostgreSQL
+mode. `limit` defaults to 50 and accepts 1–100. Omit `cursor` for the first page;
+subsequent requests pass the returned decimal `next_cursor`. Events are ordered
+by increasing immutable ID, and the query reads at most `limit + 1` rows to
+detect another page. An existing job beyond the final cursor returns
+`{"events":[]}`; a missing or retained-away job returns 404.
+
+The cursor is exclusive, so repeating the last event ID later can observe newly
+appended transitions without duplicating older rows. Event IDs and cursors are
+decimal strings, preserving 64-bit identity in JavaScript. Other fields are
+`kind`, resulting `state`, `attempt`, `created_at`, and optional `lease_owner`,
+`lease_version`, or `message`. Memory mode returns 501
+`event_history_unavailable` because it does not retain this database history.
 
 ## Submit
 
@@ -50,5 +67,6 @@ A job contains `id`, normalized `spec`, `state`, `attempts`, `created_at`, `upda
 | 503 | `draining` | Stop submitting to this process |
 | 503 | `record_capacity` | Memory: full until restart. PostgreSQL: inspect the cap, replay window and scheduled-retention logs |
 | 500 | `internal_error` | Inspect logs; retry using same key |
+| 501 | `event_history_unavailable` | Start PostgreSQL mode to inspect durable lifecycle events |
 
 The standard router supplies plain-text 404/405 for unmatched routes/methods; structured errors apply to application routes. Successful cancel marks state and signals context; it cannot undo external side effects. Cancel after success/failure returns 409; repeated cancellation returns 200.

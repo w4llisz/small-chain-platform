@@ -46,6 +46,7 @@ func newAPI(backend jobBackend, stats func() jobs.Stats, storage string, logger 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/jobs", a.submit)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.get)
+	mux.HandleFunc("GET /v1/jobs/{id}/events", a.events)
 	mux.HandleFunc("POST /v1/jobs/{id}/cancel", a.cancel)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -166,6 +167,33 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, j)
 }
 
+func (a *API) events(w http.ResponseWriter, r *http.Request) {
+	afterID := int64(0)
+	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+		parsed, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			writeError(w, http.StatusBadRequest, "invalid_request", "cursor must be a non-negative decimal event ID")
+			return
+		}
+		afterID = parsed
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > postgres.MaxEventPageSize {
+			writeError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("limit must be 1..%d", postgres.MaxEventPageSize))
+			return
+		}
+		limit = parsed
+	}
+	page, err := a.backend.ListEvents(r.Context(), r.PathValue("id"), afterID, limit)
+	if err != nil {
+		a.engineError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
 func (a *API) cancel(w http.ResponseWriter, r *http.Request) {
 	j, err := a.backend.Cancel(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -190,6 +218,8 @@ func (a *API) engineError(w http.ResponseWriter, err error) {
 		writeError(w, 503, "draining", err.Error())
 	case errors.Is(err, jobs.ErrCapacity):
 		writeError(w, 503, "record_capacity", err.Error())
+	case errors.Is(err, errEventHistoryUnavailable):
+		writeError(w, http.StatusNotImplemented, "event_history_unavailable", err.Error())
 	default:
 		a.log.Error("http.internal_error", "error", err)
 		writeError(w, 500, "internal_error", "internal error")

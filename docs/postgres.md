@@ -158,7 +158,12 @@ important for scheduling and observing recovery work.
   such failures and verify admission, the shared capacity counter, claim state,
   attempt, lease version and completion all roll back.
 - Heartbeats do not become events because their frequency would turn history
-  into an unbounded lease-renewal log. Cursor-paginated reads remain planned.
+  into an unbounded lease-renewal log.
+- `ListEvents` uses exclusive event-ID cursors and the `(job_id, id)` index. A
+  `jobs` to lateral-events query distinguishes an absent job from an empty final
+  page under one MVCC snapshot, caps pages at 100, and reads one lookahead row.
+  Event IDs and HTTP cursors are decimal strings to preserve 64-bit precision in
+  JavaScript clients.
 
 ## Lifecycle protocol
 
@@ -253,7 +258,8 @@ exactly-once or throughput claim. M2.10 adds migration backfill, event failure
 injection, one-event idempotent admission and unique claim events across two
 concurrent pools. M2.11 adds complete low-frequency transition coverage,
 completion rollback injection, unique concurrent recovery evidence and one
-terminal event in a two-connection completion/cancel race.
+terminal event in a two-connection completion/cancel race. M2.12 adds bounded
+forward event pages, missing-versus-empty semantics in one snapshot, strict HTTP
+cursor validation and a process-level submit/cancel history check.
 
-Next: expose bounded cursor-paginated event reads without weakening retention or
-claim-query isolation.
+Next: add a bounded, filterable PostgreSQL job list for the operations console.
