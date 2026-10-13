@@ -45,6 +45,7 @@ func newAPI(backend jobBackend, stats func() jobs.Stats, storage string, logger 
 	a.accepting.Store(true)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/jobs", a.submit)
+	mux.HandleFunc("GET /v1/jobs", a.list)
 	mux.HandleFunc("GET /v1/jobs/{id}", a.get)
 	mux.HandleFunc("GET /v1/jobs/{id}/events", a.events)
 	mux.HandleFunc("POST /v1/jobs/{id}/cancel", a.cancel)
@@ -167,6 +168,43 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, j)
 }
 
+func (a *API) list(w http.ResponseWriter, r *http.Request) {
+	state := jobs.State(r.URL.Query().Get("state"))
+	if !validJobListState(state) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "state must be queued, running, retrying, succeeded, failed, or canceled")
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > postgres.MaxJobPageSize {
+			writeError(w, http.StatusBadRequest, "invalid_request", fmt.Sprintf("limit must be 1..%d", postgres.MaxJobPageSize))
+			return
+		}
+		limit = parsed
+	}
+	before, err := decodeJobListCursor(r.URL.Query().Get("cursor"), state)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "cursor is invalid or does not match the state filter")
+		return
+	}
+	page, err := a.backend.ListJobs(r.Context(), postgres.JobListOptions{State: state, Before: before, Limit: limit})
+	if err != nil {
+		a.engineError(w, err)
+		return
+	}
+	response := jobListResponse{Jobs: page.Jobs}
+	if page.Next != nil {
+		response.NextCursor, err = encodeJobListCursor(*page.Next, state)
+		if err != nil {
+			a.log.Error("http.encode_job_cursor_failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (a *API) events(w http.ResponseWriter, r *http.Request) {
 	afterID := int64(0)
 	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
@@ -220,6 +258,8 @@ func (a *API) engineError(w http.ResponseWriter, err error) {
 		writeError(w, 503, "record_capacity", err.Error())
 	case errors.Is(err, errEventHistoryUnavailable):
 		writeError(w, http.StatusNotImplemented, "event_history_unavailable", err.Error())
+	case errors.Is(err, errJobListUnavailable):
+		writeError(w, http.StatusNotImplemented, "job_list_unavailable", err.Error())
 	default:
 		a.log.Error("http.internal_error", "error", err)
 		writeError(w, 500, "internal_error", "internal error")

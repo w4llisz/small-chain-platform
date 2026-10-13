@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation and cursor-paginated lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete; tracing and a React operations console remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete and M3 has started with the operations-console read contract; the React UI and tracing remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -25,6 +25,7 @@ curl -i -X POST http://127.0.0.1:8080/v1/jobs \
 
 # Replace JOB_ID with the returned id (or use the Location header).
 curl http://127.0.0.1:8080/v1/jobs/JOB_ID
+curl 'http://127.0.0.1:8080/v1/jobs?state=failed&limit=50'
 curl 'http://127.0.0.1:8080/v1/jobs/JOB_ID/events?limit=50'
 curl http://127.0.0.1:8080/metrics
 ```
@@ -61,6 +62,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Retention maintenance | Startup and periodic bounded terminal cleanup; serial sweeps, retrying error logs and cancellation before pool close |
 | Atomic lifecycle history | PostgreSQL submission, claim, outcome, retry, recovery and cancellation events commit or roll back with their job transition; replay does not duplicate history |
 | Bounded event inspection | PostgreSQL mode exposes forward cursor pagination with a 100-event page maximum and stable event-ID ordering |
+| Operations read contract | PostgreSQL mode lists newest jobs with state filtering, opaque keyset cursors, lightweight summaries and a 100-row maximum |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
@@ -88,7 +90,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `cmd/small-chain/` | Configuration, HTTP server, signals and shutdown |
 | `cmd/small-chain-worker/` | PostgreSQL worker process, configuration, signals and graceful drain |
 | `internal/jobs/` | Job model, state machine, concurrency, retries and tests |
-| `internal/postgres/` | Migrations, durable HTTP admission, bounded retention, leases/outcomes/recovery and real-DB race tests |
+| `internal/postgres/` | Migrations, durable admission/listing, bounded retention, leases/outcomes/recovery and real-DB race tests |
 | `internal/maintenance/` | Cancellable PostgreSQL retention cadence, structured failure reporting and race-tested retry behavior |
 | `internal/dbworker/` | Bounded PostgreSQL poll/heartbeat/recovery loop with shutdown and fencing-loss tests |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
@@ -137,6 +139,7 @@ workers only with unique owners.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
 - PostgreSQL mode currently exposes HTTP counters and a backend identity metric; its job/attempt gauges are not fabricated from process-local state. Durable metrics, percentile histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.
 - PostgreSQL records all low-frequency lifecycle transitions but deliberately omits heartbeat renewals. Its event endpoint is PostgreSQL-only; retained events are deleted with their job during bounded terminal cleanup.
+- PostgreSQL job listing is also unavailable in memory mode. List pages are stable against newer inserts but are not a multi-request snapshot; retention can remove older rows between pages.
 
 The target portfolio release is a **Go + PostgreSQL job platform with a small React/TypeScript operations console**, backed by failure-recovery tests and reproducible measurements. See [milestones](docs/roadmap.md) and [design decisions](docs/architecture.md).
 

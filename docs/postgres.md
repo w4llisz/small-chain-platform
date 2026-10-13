@@ -262,4 +262,12 @@ terminal event in a two-connection completion/cancel race. M2.12 adds bounded
 forward event pages, missing-versus-empty semantics in one snapshot, strict HTTP
 cursor validation and a process-level submit/cancel history check.
 
-Next: add a bounded, filterable PostgreSQL job list for the operations console.
+M3.1 adds a lightweight newest-first job list. It uses an exclusive
+`(created_at, id)` keyset cursor, a 100-row maximum and separate indexes for
+unfiltered and state-filtered scans. The opaque HTTP cursor is bound to its
+filter, so clients restart pagination when changing states. Store and real API
+process tests cover page boundaries, a newer concurrent insert, filtering,
+empty results and cursor mismatch.
+
+Next: scaffold the typed React operations console and consume this list
+contract without adding write actions yet.

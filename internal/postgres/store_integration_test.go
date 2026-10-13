@@ -90,7 +90,7 @@ func TestMigrations(t *testing.T) {
 	}
 	migrate(t, s)
 	var count int
-	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 7 {
+	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 8 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	admission, err := migrations.ReadFile("migrations/0001_admission.sql")
@@ -121,6 +121,10 @@ func TestMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	jobList, err := migrations.ReadFile("migrations/0008_job_list.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
 	altered := fstest.MapFS{
 		"migrations/0001_admission.sql":      {Data: append(append([]byte{}, admission...), '\n')},
 		"migrations/0002_leases.sql":         {Data: leases},
@@ -129,6 +133,7 @@ func TestMigrations(t *testing.T) {
 		"migrations/0005_retention.sql":      {Data: retention},
 		"migrations/0006_job_events.sql":     {Data: events},
 		"migrations/0007_outcome_events.sql": {Data: outcomeEvents},
+		"migrations/0008_job_list.sql":       {Data: jobList},
 	}
 	if err := s.migrate(context.Background(), altered); err == nil || !strings.Contains(err.Error(), "history mismatch") {
 		t.Fatalf("edited migration: %v", err)
@@ -141,7 +146,8 @@ func TestMigrations(t *testing.T) {
 		"migrations/0005_retention.sql":      {Data: retention},
 		"migrations/0006_job_events.sql":     {Data: events},
 		"migrations/0007_outcome_events.sql": {Data: outcomeEvents},
-		"migrations/0008_broken.sql":         {Data: []byte("CREATE TABLE rollback_probe (id int); SELECT 1/0;")},
+		"migrations/0008_job_list.sql":       {Data: jobList},
+		"migrations/0009_broken.sql":         {Data: []byte("CREATE TABLE rollback_probe (id int); SELECT 1/0;")},
 	}
 	if err := s.migrate(context.Background(), broken); err == nil {
 		t.Fatal("broken migration succeeded")
@@ -150,7 +156,7 @@ func TestMigrations(t *testing.T) {
 	if err := s.pool.QueryRow(context.Background(), "SELECT to_regclass('rollback_probe') IS NULL").Scan(&absent); err != nil || !absent {
 		t.Fatalf("DDL not rolled back: %v %v", absent, err)
 	}
-	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 7 {
+	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 8 {
 		t.Fatalf("failed migration recorded: %d %v", count, err)
 	}
 	migrate(t, s) // A failed migration does not strand the advisory lock.

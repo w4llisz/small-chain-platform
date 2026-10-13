@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
+	"github.com/w4llisz/small-chain-platform/internal/postgres"
 )
 
 func fixture(t *testing.T) (*jobs.Engine, *API) {
@@ -56,6 +57,10 @@ func TestHTTPContract(t *testing.T) {
 		status                  int
 	}{
 		{"GET", location, "", "", 200},
+		{"GET", "/v1/jobs", "", "", 501},
+		{"GET", "/v1/jobs?state=unknown", "", "", 400},
+		{"GET", "/v1/jobs?limit=101", "", "", 400},
+		{"GET", "/v1/jobs?cursor=not-base64url!", "", "", 400},
 		{"GET", location + "/events", "", "", 501},
 		{"GET", location + "/events?cursor=-1", "", "", 400},
 		{"GET", location + "/events?limit=101", "", "", 400},
@@ -82,6 +87,26 @@ func TestHTTPContract(t *testing.T) {
 	w = request(h, "GET", "/metrics", "", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "small_chain_jobs{state=\"succeeded\"}") || !strings.Contains(w.Body.String(), "small_chain_http_requests_total ") {
 		t.Fatal(w.Body.String())
+	}
+}
+
+func TestJobListCursorBindsStateFilter(t *testing.T) {
+	position := postgres.JobPosition{CreatedAt: time.Now().UTC().Truncate(time.Microsecond), ID: strings.Repeat("a", 32)}
+	raw, err := encodeJobListCursor(position, jobs.Queued)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeJobListCursor(raw, jobs.Queued)
+	if err != nil || decoded.ID != position.ID || !decoded.CreatedAt.Equal(position.CreatedAt) {
+		t.Fatalf("decoded=%+v err=%v", decoded, err)
+	}
+	if _, err := decodeJobListCursor(raw, jobs.Failed); err == nil {
+		t.Fatal("cursor accepted with a different state filter")
+	}
+	for _, invalid := range []string{"not-base64url!", strings.Repeat("a", maxJobCursorLength+1)} {
+		if _, err := decodeJobListCursor(invalid, ""); err == nil {
+			t.Fatalf("invalid cursor accepted: %q", invalid)
+		}
 	}
 }
 

@@ -210,3 +210,18 @@ process case reads submitted and canceled events through the HTTP cursor across
 a server restart. These checks prove bounded cursor semantics against the
 project's test workload; they do not claim snapshot export across requests,
 indefinite audit retention or measured query throughput.
+
+## M3.1 bounded job-list API — 2026-10-13
+
+Local, Linux amd64 with Go 1.27.2: `make verify`, integration-tag compilation,
+integration-tag vet and module verification are required before submission. The
+candidate workflow runs PostgreSQL 16 with the race detector and the real API
+process.
+
+The store case creates deterministic recent-job ordering, crosses a two-row
+page, inserts a newer row between requests and proves the later page neither
+duplicates nor shifts. It also checks state filtering, non-null empty results,
+input bounds and both list index shapes. The process case paginates queued jobs
+after API restart, rejects reuse of a cursor under another state filter and
+finds a canceled job through the filter. This proves contract correctness for
+the test workload, not a cross-request snapshot or measured query latency.

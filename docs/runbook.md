@@ -71,6 +71,17 @@ transition. An empty `events` array means the job exists but has no later event;
 404 means the job is absent or has already been removed by retention. The
 endpoint is intentionally unavailable in memory mode.
 
+List recent durable jobs for operator triage:
+
+```sh
+curl 'http://127.0.0.1:8080/v1/jobs?state=failed&limit=50'
+# Continue with the same state and the returned opaque cursor:
+curl 'http://127.0.0.1:8080/v1/jobs?state=failed&limit=50&cursor=CURSOR'
+```
+
+Start a new page when changing the state filter. List summaries omit payloads
+and results; use `GET /v1/jobs/{id}` for full detail.
+
 ## Troubleshooting
 
 - **429:** inspect queue and retrying jobs. Reduce load; adjust workers using measured resource use. More queue capacity only permits more waiting.
@@ -79,6 +90,7 @@ endpoint is intentionally unavailable in memory mode.
 - **Stuck work:** inspect timeout/attempt/state. Executors must honor context; Go cannot preempt arbitrary task functions.
 - **Missing HTTP records after restart:** expected only in default memory mode. Start with `-storage=postgres` and the same migrated `DATABASE_URL` for durable records.
 - **Event history returns 501:** start the API with `-storage=postgres`; memory mode does not retain equivalent lifecycle evidence.
+- **Job list returns 501:** start the API with `-storage=postgres`; the operations list intentionally represents durable shared state only.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Missing traces/percentiles:** planned, not present; duration is sum/count only.
 

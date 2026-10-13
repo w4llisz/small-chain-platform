@@ -310,6 +310,21 @@ PostgreSQL describes `SKIP LOCKED` as useful for queue-like consumers, with an i
 
 Delivery semantics are **at least once**, with fenced state writes. Exactly-once external side effects are not promised. Lease fencing protects database state only; downstream systems need their own idempotency or fencing protocol.
 
+## M3.1: operations job list (implemented)
+
+`ListJobs` serves lightweight summaries rather than full specs/results and caps
+each page at 100 rows. Newest-first keyset pagination orders by
+`(created_at, id)`, using the ID as a deterministic tie-breaker. Separate
+`(created_at, id)` and `(state, created_at, id)` indexes support the unfiltered
+and state-filtered access paths without using queue-oriented `SKIP LOCKED`.
+
+The HTTP cursor is opaque base64url JSON containing a version, position and
+state filter. Binding the filter prevents a client from accidentally continuing
+a queued page as a failed page. Inserts newer than the cursor cannot shift later
+pages as they would with `OFFSET`; retention may still remove unseen rows, so
+the API does not claim a snapshot spanning requests. Memory mode returns 501 to
+keep the operations contract tied to durable state.
+
 ## Target architecture after M3 (planned)
 
 ```mermaid

@@ -5,6 +5,7 @@ Base URL: `http://127.0.0.1:8080`. Local trusted use; no authentication. Bodies 
 | Method / path | Success | Purpose |
 | --- | --- | --- |
 | `POST /v1/jobs` | 202 new / 200 replay | Submit with required `Idempotency-Key` |
+| `GET /v1/jobs` | 200 | List recent PostgreSQL jobs with state filter and keyset cursor |
 | `GET /v1/jobs/{id}` | 200 | Read snapshot |
 | `GET /v1/jobs/{id}/events` | 200 | Read PostgreSQL lifecycle history with a forward cursor |
 | `POST /v1/jobs/{id}/cancel` | 200 | Cancel queued/running/retrying; repeated cancel succeeds |
@@ -12,7 +13,27 @@ Base URL: `http://127.0.0.1:8080`. Local trusted use; no authentication. Bodies 
 | `GET /readyz` | 200 / 503 | Admission enabled / draining |
 | `GET /metrics` | 200 | Prometheus text exposition |
 
-Readiness reflects lifecycle and, in PostgreSQL mode, database connectivity; it does not predict instantaneous queue occupancy or retention capacity. There is no job-list endpoint yet; retain returned IDs. M3 adds list pagination and filters.
+Readiness reflects lifecycle and, in PostgreSQL mode, database connectivity; it does not predict instantaneous queue occupancy or retention capacity.
+
+## Job list
+
+`GET /v1/jobs?state=failed&limit=50&cursor=CURSOR` is available in PostgreSQL
+mode. Omit `state` to include all states; accepted filters are `queued`,
+`running`, `retrying`, `succeeded`, `failed`, and `canceled`. `limit` defaults to
+50 and accepts 1–100. Jobs are ordered newest first by `(created_at, id)`.
+
+The opaque base64url cursor is exclusive and bound to the state filter. Pass it
+back unchanged; changing or removing the filter requires starting a new page.
+Keyset pagination prevents newer inserts from shifting later pages. It is not a
+snapshot held across HTTP requests: retention may remove older rows between
+pages. A final page returns `{"jobs":[]}` or a shorter list and omits
+`next_cursor`.
+
+List entries intentionally contain only `id`, `kind`, `state`, `attempts`,
+`max_attempts`, `created_at`, `updated_at`, and an optional `error`. Fetch the
+single-job resource for the full normalized spec or result. Memory mode returns
+501 `job_list_unavailable` rather than presenting process-local semantics as the
+durable operations view.
 
 ## Event history
 
@@ -68,5 +89,6 @@ A job contains `id`, normalized `spec`, `state`, `attempts`, `created_at`, `upda
 | 503 | `record_capacity` | Memory: full until restart. PostgreSQL: inspect the cap, replay window and scheduled-retention logs |
 | 500 | `internal_error` | Inspect logs; retry using same key |
 | 501 | `event_history_unavailable` | Start PostgreSQL mode to inspect durable lifecycle events |
+| 501 | `job_list_unavailable` | Start PostgreSQL mode to list durable jobs |
 
 The standard router supplies plain-text 404/405 for unmatched routes/methods; structured errors apply to application routes. Successful cancel marks state and signals context; it cannot undo external side effects. Cancel after success/failure returns 409; repeated cancellation returns 200.

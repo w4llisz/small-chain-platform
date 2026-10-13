@@ -10,10 +10,12 @@ Target investment: roughly 45–60 focused hours for M1–M4, adjusted by progre
 | --- | --- | --- | --- |
 | M1 — execution foundation (complete) | Go API, memory engine, bounded pool, retries, cancel, probes, metrics, tests/CI; 10–14 h | Concurrent same-key requests execute once; safe overload; immutable terminal results; signal drain/deadline cancellation | `make verify`, CI workflow, design decisions |
 | M2 — durable scheduling (complete) | PostgreSQL migrations, admission, leases, fenced completion, delayed retries, events/retention; 14–18 h | Jobs survive restart; two processes claim safely; killed worker recovers; stale completion rejected; retry budget survives crashes | DB integration tests, recovery script, query plans |
-| M3 — operator console | React/TypeScript, paginated/filterable list, details/events, cancel; 8–12 h | Find failures and causes; cancel queued/running tasks; loading/error states; Playwright workflow passes | Recorded demo, screenshots, E2E tests |
+| M3 — operator console (in progress) | React/TypeScript, paginated/filterable list, details/events, cancel; 8–12 h | Find failures and causes; cancel queued/running tasks; loading/error states; Playwright workflow passes | API contract tests; later recorded demo, screenshots and E2E tests |
 | M4 — operational evidence | Compose demo, histograms, OpenTelemetry, dashboard, reproducible load/failure tests; 12–16 h | One-command stack; trace admission/attempts; runbook matches failures; measurements include hardware/commit/workload | Benchmark report with raw data; incident write-up |
 
-M1 is a runnable baseline, not yet the full flagship portfolio. **M2 is the next priority:** it turns a worker-pool exercise into a durable platform project. Build M3 after persistence stabilizes.
+M1 is the runnable baseline and M2 is the completed durable platform core.
+**M3 is the current priority:** expose that reliability work through a focused
+operator workflow without expanding into a general scheduler product.
 
 ## Next PRs
 
@@ -29,9 +31,9 @@ M1 is a runnable baseline, not yet the full flagship portfolio. **M2 is the next
    - **M2.10 event foundation implemented:** migration `0006_job_events.sql` records one submission event and one event per claimed fencing version. Submission replay does not duplicate history; claim updates and event inserts share one data-modifying statement and transaction. A migration backfills only the admission timestamp known for older rows. Real-DB failure injection proves an event-write failure rolls back the job insert/capacity counter or claim/version update.
    - **M2.11 complete event coverage implemented:** migration `0007_outcome_events.sql` gives events a resulting state and bounded message, then records success, scheduled retry, worker failure, lease recovery and cancellation in the same statement as each fenced transition. Heartbeats are intentionally excluded. Database constraints prevent duplicate worker outcomes, recoveries and terminal events. Real-DB cases cover failure rollback, concurrent recovery and the completion/cancel race.
    - **M2.12 event reads implemented:** `ListEvents` uses one MVCC snapshot and the existing `(job_id, id)` index to return stable forward pages of at most 100 events. `GET /v1/jobs/{id}/events` validates decimal cursors and page bounds, distinguishes a missing job from an empty page, and is explicitly unavailable in memory mode. Real PostgreSQL and process-level HTTP tests cover page boundaries and submit/cancel history.
-   - **Next small task — M3.1:** add a bounded, filterable PostgreSQL job-list endpoint as the first operations-console contract.
-2. `feat/postgres-job-events`: add transactionally consistent, append-only lifecycle evidence without introducing a message broker.
-3. `feat/operations-console`: list/filter API, React and Playwright. Optional manual retry creates a new job/key with explicit lineage; never mutate a terminal record.
+2. **M3.1 job-list API implemented:** migration `0008_job_list.sql` adds indexes for unfiltered and state-filtered recent-job scans. `GET /v1/jobs` returns lightweight summaries in newest-first `(created_at, id)` keyset pages of at most 100 rows. Opaque cursors are bound to the state filter; memory mode explicitly returns 501. Real PostgreSQL tests cover page boundaries, concurrent newer inserts, filtering, empty pages and index shape; the API process test covers cursor/filter behavior across restart.
+   - **Next small task — M3.2:** scaffold the React/TypeScript console with a typed API client and a read-only job table, then add component tests before Playwright.
+3. `feat/operations-console`: details/events, cancellation and Playwright workflow. Optional manual retry creates a new job/key with explicit lineage; never mutate a terminal record.
 4. `feat/observability-and-evidence`: Compose with PostgreSQL/metrics/traces, dashboard, load generator and measured report.
 
 ## Build on existing experience

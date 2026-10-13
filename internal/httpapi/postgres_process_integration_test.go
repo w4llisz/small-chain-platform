@@ -51,6 +51,11 @@ func TestPostgresHTTPPersistsAdmissionAcrossRestart(t *testing.T) {
 	if err := json.Unmarshal(body, &admitted); err != nil || admitted.ID == "" || admitted.State != jobs.Queued {
 		t.Fatalf("admitted: %+v err=%v body=%s", admitted, err, body)
 	}
+	status, body, _ = httpRequest(t, http.MethodPost, base+"/v1/jobs", "durable-http-second", spec)
+	var admittedSecond jobs.Job
+	if err := json.Unmarshal(body, &admittedSecond); err != nil || status != http.StatusAccepted || admittedSecond.ID == "" {
+		t.Fatalf("second submit: status=%d job=%+v err=%v body=%s", status, admittedSecond, err, body)
+	}
 	if status, body, _ := httpRequest(t, http.MethodPost, base+"/v1/jobs", "over-capacity", spec); status != http.StatusServiceUnavailable || !bytes.Contains(body, []byte(`"code":"record_capacity"`)) {
 		t.Fatalf("capacity: %d %s", status, body)
 	}
@@ -68,6 +73,21 @@ func TestPostgresHTTPPersistsAdmissionAcrossRestart(t *testing.T) {
 	if err := json.Unmarshal(body, &persisted); err != nil || status != http.StatusOK || persisted.ID != admitted.ID || persisted.State != jobs.Queued {
 		t.Fatalf("restart get: status=%d job=%+v err=%v body=%s", status, persisted, err, body)
 	}
+	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs?state=queued&limit=1", "", "")
+	var firstJobs jobListResponse
+	if err := json.Unmarshal(body, &firstJobs); err != nil || status != http.StatusOK ||
+		len(firstJobs.Jobs) != 1 || firstJobs.Jobs[0].ID != admittedSecond.ID || firstJobs.NextCursor == "" {
+		t.Fatalf("first job page: status=%d page=%+v err=%v body=%s", status, firstJobs, err, body)
+	}
+	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs?state=queued&limit=1&cursor="+firstJobs.NextCursor, "", "")
+	var secondJobs jobListResponse
+	if err := json.Unmarshal(body, &secondJobs); err != nil || status != http.StatusOK ||
+		len(secondJobs.Jobs) != 1 || secondJobs.Jobs[0].ID != admitted.ID || secondJobs.NextCursor != "" {
+		t.Fatalf("second job page: status=%d page=%+v err=%v body=%s", status, secondJobs, err, body)
+	}
+	if status, body, _ := httpRequest(t, http.MethodGet, base+"/v1/jobs?state=failed&cursor="+firstJobs.NextCursor, "", ""); status != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"invalid_request"`)) {
+		t.Fatalf("cursor filter mismatch: %d %s", status, body)
+	}
 	status, body, _ = httpRequest(t, http.MethodPost, base+"/v1/jobs", "durable-http", `{"kind":"demo.checksum","payload":"changed"}`)
 	if status != http.StatusConflict {
 		t.Fatalf("restart conflict: %d %s", status, body)
@@ -76,6 +96,12 @@ func TestPostgresHTTPPersistsAdmissionAcrossRestart(t *testing.T) {
 	var canceled jobs.Job
 	if err := json.Unmarshal(body, &canceled); err != nil || status != http.StatusOK || canceled.ID != admitted.ID || canceled.State != jobs.Canceled {
 		t.Fatalf("restart cancel: status=%d job=%+v err=%v body=%s", status, canceled, err, body)
+	}
+	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs?state=canceled", "", "")
+	var canceledJobs jobListResponse
+	if err := json.Unmarshal(body, &canceledJobs); err != nil || status != http.StatusOK ||
+		len(canceledJobs.Jobs) != 1 || canceledJobs.Jobs[0].ID != admitted.ID || canceledJobs.Jobs[0].State != jobs.Canceled {
+		t.Fatalf("canceled jobs: status=%d page=%+v err=%v body=%s", status, canceledJobs, err, body)
 	}
 	status, body, _ = httpRequest(t, http.MethodGet, base+"/v1/jobs/"+admitted.ID+"/events?limit=1", "", "")
 	var firstEvents postgres.EventPage
@@ -157,7 +183,7 @@ func postgresHTTPDatabase(t *testing.T) string {
 		store.Close()
 		t.Fatal(err)
 	}
-	if _, err := store.ConfigureAdmission(ctx, 1, time.Hour); err != nil {
+	if _, err := store.ConfigureAdmission(ctx, 2, time.Hour); err != nil {
 		store.Close()
 		t.Fatal(err)
 	}
