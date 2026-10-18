@@ -1,4 +1,9 @@
 GO ?= go
+.DEFAULT_GOAL := run
+
+.PHONY: web-verify
+web-verify:
+	cd web && npm ci && npm run verify
 
 .PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration
 run:

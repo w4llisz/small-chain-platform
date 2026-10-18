@@ -1,4 +1,6 @@
 /bin/
 /coverage.out
+/web/dist/
+/web/node_modules/
 *.log
 .env

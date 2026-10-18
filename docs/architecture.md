@@ -327,6 +327,16 @@ keep the operations contract tied to durable state.
 
 ## Target architecture after M3 (planned)
 
+M3.2 implements the first read-only UI slice in `web/`: a separate Vite build
+using relative `/v1` requests and a loopback development proxy. The typed client
+checks the response shape at runtime, preserves structured API errors and caps
+requested pages at 20. State filters reset the cursor chain. Abort signals and
+request versions keep stale first-page or older-page responses from overwriting
+the active filter; failed older pages preserve already loaded rows for retry.
+There is no automatic polling or implied live snapshot. Tables retain readable
+state text, UTC timestamps and keyboard-accessible horizontal scrolling.
+Deployment, detail/event views, UI cancellation and browser E2E remain planned.
+
 ```mermaid
 flowchart TD
   UI["React operations console"] --> API["Go API"]

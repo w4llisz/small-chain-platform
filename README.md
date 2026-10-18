@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete and M3 has started with the operations-console read contract; the React UI and tracing remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 includes a React/TypeScript read-only console with tested filters, pagination and failure states; details, UI cancellation, browser E2E and tracing remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -130,6 +130,21 @@ does not run DDL or start an in-process memory worker in this mode. Add more
 workers only with unique owners.
 
 ## Limits and next milestones
+
+The read-only operations console requires Node.js 24 and npm. Start the
+PostgreSQL API using the instructions above, then run:
+
+```sh
+cd web
+npm ci
+npm run dev
+```
+
+Vite proxies `/v1` to the API at `127.0.0.1:8080`. `make web-verify` runs a
+clean dependency install, component/client tests, TypeScript checks and a
+production build. The Go `make verify` target remains independent. The console
+does not poll: reload to see changed state. Production asset hosting and browser
+E2E verification remain future work; a successful build is not a deployment.
 
 - Restarting the default memory mode loses jobs, results and idempotency keys. Its HTTP 202 acknowledges memory admission. In PostgreSQL mode, 202 follows transaction commit and records survive API restart.
 - PostgreSQL mode requires migrations and a reachable database before startup. Readiness fails if the database becomes unavailable; new submissions fail without falling back to memory.
