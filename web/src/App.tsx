@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { jobStates, listJobs, type JobsClient, type JobState, type JobSummary } from "./api";
 import "./styles.css";
+import JobDetail from "./JobDetail";
 
 const label = (state: string) => state.charAt(0).toUpperCase() + state.slice(1);
 function timestamp(value: string) {
@@ -16,6 +17,7 @@ export default function App({ loadJobs = listJobs }: { loadJobs?: JobsClient }) 
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string>();
   const [reload, setReload] = useState(0);
+  const [selectedID, setSelectedID] = useState<string>();
   const epoch = useRef(0);
   const moreController = useRef<AbortController | null>(null);
   const morePending = useRef(false);
@@ -96,7 +98,10 @@ export default function App({ loadJobs = listJobs }: { loadJobs?: JobsClient }) 
             <table><thead><tr>{["Job", "Kind", "State", "Attempts", "Created (UTC)", "Updated (UTC)"].map((name) =>
               <th key={name} scope="col">{name}</th>)}</tr></thead>
               <tbody>{jobs.map((job) => <tr key={job.id}>
-                <td className="job-cell"><code>{job.id}</code>{job.error && <span className="job-error">{job.error}</span>}</td>
+                <td className="job-cell"><button type="button" className="job-link"
+                  aria-expanded={selectedID === job.id} aria-controls="selected-job"
+                  onClick={() => setSelectedID(job.id)}><code>{job.id}</code></button>
+                  {job.error && <span className="job-error">{job.error}</span>}</td>
                 <td>{job.kind}</td><td><span className={`status status-${job.state}`}>{label(job.state)}</span></td>
                 <td>{job.attempts} / {job.max_attempts}</td>
                 <td><time dateTime={job.created_at}>{timestamp(job.created_at)}</time></td>
@@ -111,6 +116,11 @@ export default function App({ loadJobs = listJobs }: { loadJobs?: JobsClient }) 
         </footer>
       </section>
       <p className="footnote">Read-only view. Jobs may change or expire between pages. Reload to see the latest state.</p>
+      {selectedID ? <section id="selected-job" className="panel job-detail" aria-label={`Details for ${selectedID}`}>
+        <header className="detail-heading"><div><h2>Job detail</h2><code>{selectedID}</code></div>
+          <button type="button" onClick={() => setSelectedID(undefined)}>Close details</button></header>
+        <JobDetail key={selectedID} id={selectedID} />
+      </section> : null}
     </main>
   </>;
 }

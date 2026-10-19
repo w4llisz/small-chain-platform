@@ -40,5 +40,23 @@ time { color: #58637a; }
 .error p { margin: 5px 0 0; font-size: 13px; overflow-wrap: anywhere; }
 footer { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; background: #fbfcfd; color: #58637a; font-size: 13px; }
 .footnote { color: #58637a; font-size: 12px; margin-top: 14px; }
+.job-link { padding: 0; border: 0; background: none; text-decoration: underline; text-underline-offset: 3px; }
+.job-detail { margin-top: 24px; }
+.detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px; border-bottom: 1px solid #e2e6ed; }
+.detail-heading h2 { margin: 0 0 8px; font-size: 22px; }
+.detail-heading code { overflow-wrap: anywhere; }
+.detail-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.detail-content > section { padding: 24px; min-width: 0; overflow-wrap: anywhere; }
+.detail-content > section + section { border-left: 1px solid #e2e6ed; }
+.detail-content h3 { margin: 0 0 16px; }
+.detail-content pre { overflow: auto; padding: 16px; border-radius: 5px; background: #f7f8fa; font-size: 12px; }
+.snapshot-fields { display: grid; gap: 14px; margin: 0; font-size: 13px; }
+.snapshot-fields dt { color: #58637a; margin-bottom: 4px; }
+.snapshot-fields dd { margin: 0; }
+.event-list { padding: 0; list-style: none; }
+.event-list li { padding: 16px 0; border-bottom: 1px solid #e2e6ed; font-size: 13px; }
+.event-list li > div { display: flex; justify-content: space-between; gap: 10px; }
+.event-list p { margin: 8px 0; }
+@media (max-width: 800px) { .detail-content { grid-template-columns: minmax(0, 1fr); } .detail-content > section + section { border-left: 0; border-top: 1px solid #e2e6ed; } .detail-heading { align-items: flex-start; } }
 @media (max-width: 1230px) { main, .topbar-inner { margin-left: 24px; margin-right: 24px; } }
 @media (max-width: 600px) { main, .topbar-inner { margin-left: 16px; margin-right: 16px; } main { padding-top: 30px; } .section-name { display: none; } .filters { width: 100%; } .filters button { min-width: 92px; } footer { align-items: stretch; flex-direction: column; } }

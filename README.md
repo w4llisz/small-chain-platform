@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 includes a React/TypeScript read-only console with tested filters, pagination and failure states; details, UI cancellation, browser E2E and tracing remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 includes a React/TypeScript read-only console with tested filters, pagination, selected-job snapshots and lifecycle history; UI cancellation, browser E2E and tracing remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -63,6 +63,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Atomic lifecycle history | PostgreSQL submission, claim, outcome, retry, recovery and cancellation events commit or roll back with their job transition; replay does not duplicate history |
 | Bounded event inspection | PostgreSQL mode exposes forward cursor pagination with a 100-event page maximum and stable event-ID ordering |
 | Operations read contract | PostgreSQL mode lists newest jobs with state filtering, opaque keyset cursors, lightweight summaries and a 100-row maximum |
+| Read-only console | Job selection shows normalized spec, result/error and forward-paged lifecycle history; stale requests, retained-away records and page retries are component-tested |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
@@ -95,6 +96,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `internal/dbworker/` | Bounded PostgreSQL poll/heartbeat/recovery loop with shutdown and fencing-loss tests |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
+| `web/` | React/TypeScript list, selected-job snapshot/history and client/component tests |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
 | `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |

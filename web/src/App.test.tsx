@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { JobsClient, JobPage, JobSummary } from "./api";
 
@@ -8,6 +8,24 @@ const job: JobSummary = { id: "job-1", kind: "demo.checksum", state: "failed", a
   error: "attempt deadline exceeded", created_at: "2026-10-14T10:00:00Z", updated_at: "2026-10-14T10:01:00Z" };
 
 describe("operations console", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("opens a selected job's snapshot and history, then closes the detail view", async () => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const body = String(input).includes("/events?") ? { events: [] } : {
+        ...job, spec: { kind: job.kind, payload: "hello", max_attempts: 3, timeout_ms: 1000 },
+      };
+      return new Response(JSON.stringify(body));
+    });
+    render(<App loadJobs={vi.fn<JobsClient>().mockResolvedValue({ jobs: [job] })} />);
+    await userEvent.click(await screen.findByRole("button", { name: job.id }));
+    expect(await screen.findByText("Normalized spec")).toBeTruthy();
+    expect(await screen.findByText("No retained events.")).toBeTruthy();
+    expect(fetcher.mock.calls.map(([path]) => path)).toEqual([
+      "/v1/jobs/job-1", "/v1/jobs/job-1/events?limit=20",
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Close details" }));
+    expect(screen.queryByRole("heading", { name: "Job detail" })).toBeNull();
+  });
   it("renders summaries and their failure context", async () => {
     render(<App loadJobs={vi.fn<JobsClient>().mockResolvedValue({ jobs: [job] })} />);
     expect(screen.getByRole("status").textContent).toContain("Loading");

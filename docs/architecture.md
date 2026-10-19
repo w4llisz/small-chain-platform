@@ -335,7 +335,24 @@ request versions keep stale first-page or older-page responses from overwriting
 the active filter; failed older pages preserve already loaded rows for retry.
 There is no automatic polling or implied live snapshot. Tables retain readable
 state text, UTC timestamps and keyboard-accessible horizontal scrolling.
-Deployment, detail/event views, UI cancellation and browser E2E remain planned.
+Deployment, UI cancellation and browser E2E remain planned.
+
+M3.3 adds a selected-job detail view. Snapshot and retained event history are
+independent requests started in parallel; one resource can fail and retry while
+the other remains readable. They are separate database reads, so the UI does not
+claim a shared snapshot or infer current state from the last loaded event. Each
+event page requests at most 20 rows and appends oldest-first. Decimal event IDs
+and cursors remain strings through parsing, rendering and subsequent requests.
+The UI deliberately omits the numeric lease version rather than claiming safe
+64-bit precision for that JSON number.
+
+Changing or closing the selected job unmounts its resource components, aborts
+in-flight requests and prevents late results from mutating the next selection.
+An older event-page failure preserves the loaded history and retries the same
+cursor. A 404 explains the retention boundary instead of presenting an empty
+history as evidence that the job never existed. React component and typed-client
+tests verify these transitions; browser visual QA and real-backend E2E are still
+unverified.
 
 ```mermaid
 flowchart TD
