@@ -42,6 +42,11 @@ footer { min-height: 72px; display: flex; align-items: center; justify-content: 
 .footnote { color: #58637a; font-size: 12px; margin-top: 14px; }
 .job-link { padding: 0; border: 0; background: none; text-decoration: underline; text-underline-offset: 3px; }
 .job-detail { margin-top: 24px; }
+.cancel-action { margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e6ed; }
+.cancel-action p { font-size: 13px; line-height: 1.5; }
+.cancel-action button { margin: 0 10px 10px 0; }
+.cancel-notice { margin: 0; padding: 18px 24px; background: #eef4ff; font-size: 13px; }
+.cancel-notice[role=alert] { background: #fff6f7; color: #76242b; }
 .detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px; border-bottom: 1px solid #e2e6ed; }
 .detail-heading h2 { margin: 0 0 8px; font-size: 22px; }
 .detail-heading code { overflow-wrap: anywhere; }

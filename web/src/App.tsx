@@ -115,11 +115,11 @@ export default function App({ loadJobs = listJobs }: { loadJobs?: JobsClient }) 
           </button>}
         </footer>
       </section>
-      <p className="footnote">Read-only view. Jobs may change or expire between pages. Reload to see the latest state.</p>
+      <p className="footnote">Jobs may change or expire between reads. Reload to see the latest state. Cancellation requires confirmation in the detail view.</p>
       {selectedID ? <section id="selected-job" className="panel job-detail" aria-label={`Details for ${selectedID}`}>
         <header className="detail-heading"><div><h2>Job detail</h2><code>{selectedID}</code></div>
           <button type="button" onClick={() => setSelectedID(undefined)}>Close details</button></header>
-        <JobDetail key={selectedID} id={selectedID} />
+        <JobDetail key={selectedID} id={selectedID} onChanged={() => setReload((n) => n + 1)} />
       </section> : null}
     </main>
   </>;

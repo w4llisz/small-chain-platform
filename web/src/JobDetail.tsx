@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, getJob, listEvents, type SnapshotClient, type EventsClient, type JobSnapshot, type JobEvent } from "./api";
+import { ApiError, cancelJob, getJob, listEvents, type CancelClient, type SnapshotClient, type EventsClient, type JobSnapshot, type JobEvent } from "./api";
+import Cancellation, { type CancelNotice } from "./Cancellation";
 
 function message(reason: unknown): string {
   if (reason instanceof ApiError && reason.status === 404)
@@ -7,7 +8,9 @@ function message(reason: unknown): string {
   return reason instanceof Error ? reason.message : "Request failed. Try again.";
 }
 
-function Snapshot({ id, load }: { id: string; load: SnapshotClient }) {
+function Snapshot({ id, load, cancel, onSettled }: {
+  id: string; load: SnapshotClient; cancel: CancelClient; onSettled: (notice: CancelNotice) => void;
+}) {
   const [job, setJob] = useState<JobSnapshot>();
   const [error, setError] = useState<string>();
   const [retry, setRetry] = useState(0);
@@ -34,6 +37,8 @@ function Snapshot({ id, load }: { id: string; load: SnapshotClient }) {
         {job.error ? <p className="job-error">{job.error}</p> : null}
         {job.result ? <><h4>Result</h4><pre>{job.result}</pre></> : null}
         <h4>Normalized spec</h4><pre>{JSON.stringify(job.spec, null, 2)}</pre>
+        {job.state === "queued" || job.state === "running" || job.state === "retrying"
+          ? <Cancellation id={id} cancel={cancel} onSettled={onSettled} /> : null}
       </>}
   </section>;
 }
@@ -100,12 +105,22 @@ function Events({ id, load }: { id: string; load: EventsClient }) {
   </section>;
 }
 
-export default function JobDetail({ id, loadSnapshot = getJob, loadEvents = listEvents }: {
-  id: string; loadSnapshot?: SnapshotClient; loadEvents?: EventsClient;
+export default function JobDetail({ id, loadSnapshot = getJob, loadEvents = listEvents, cancel = cancelJob, onChanged }: {
+  id: string; loadSnapshot?: SnapshotClient; loadEvents?: EventsClient; cancel?: CancelClient; onChanged?: () => void;
 }) {
+  const [revision, setRevision] = useState(0);
+  const [notice, setNotice] = useState<(CancelNotice & { id: string })>();
+  function settled(value: CancelNotice) {
+    setNotice({ ...value, id });
+    setRevision((n) => n + 1);
+    onChanged?.();
+  }
   // Keyed children also reset correctly when the component is reused outside App.
-  return <div className="detail-content">
-    <Snapshot key={`snapshot-${id}`} id={id} load={loadSnapshot} />
-    <Events key={`events-${id}`} id={id} load={loadEvents} />
-  </div>;
+  return <>
+    {notice?.id === id ? <p className="cancel-notice" role={notice.error ? "alert" : "status"}>{notice.text}</p> : null}
+    <div className="detail-content">
+      <Snapshot key={`snapshot-${id}-${revision}`} id={id} load={loadSnapshot} cancel={cancel} onSettled={settled} />
+      <Events key={`events-${id}-${revision}`} id={id} load={loadEvents} />
+    </div>
+  </>;
 }

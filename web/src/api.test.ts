@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getJob, listEvents, listJobs } from "./api";
+import { cancelJob, getJob, listEvents, listJobs } from "./api";
 
 describe("listJobs", () => {
   it("passes the filter, opaque cursor and abort signal", async () => {
@@ -23,6 +23,29 @@ describe("listJobs", () => {
 });
 
 describe("detail clients", () => {
+  it("posts a bodyless cancel request and validates the committed snapshot", async () => {
+    const job = { id: "job-1", spec: { kind: "demo.checksum", payload: "hello", max_attempts: 3, timeout_ms: 1000 },
+      state: "canceled", attempts: 1, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:01:00Z" };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(job)));
+    const signal = new AbortController().signal;
+    await expect(cancelJob(job.id, signal, fetcher)).resolves.toEqual(job);
+    expect(fetcher).toHaveBeenCalledWith("/v1/jobs/job-1/cancel", {
+      method: "POST", headers: { Accept: "application/json" }, signal,
+    });
+  });
+  it("preserves cancellation conflicts for authoritative refresh", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: "conflict", message: "job already finished" },
+    }), { status: 409 }));
+    await expect(cancelJob("job-1", undefined, fetcher)).rejects.toMatchObject({ status: 409, code: "conflict" });
+  });
+  it("rejects a success response that does not confirm canceled state", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      id: "job-1", spec: { kind: "demo.checksum", payload: "hello", max_attempts: 3, timeout_ms: 1000 },
+      state: "running", attempts: 1, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:01:00Z",
+    })));
+    await expect(cancelJob("job-1", undefined, fetcher)).rejects.toMatchObject({ code: "invalid_response" });
+  });
   it("encodes the selected ID and validates its snapshot", async () => {
     const job = { id: "job/id", spec: { kind: "demo.checksum", payload: "hello", max_attempts: 3, timeout_ms: 1000 },
       state: "succeeded", attempts: 1, result: "checksum", created_at: "2026-10-19T10:00:00Z", updated_at: "2026-10-19T10:01:00Z" };

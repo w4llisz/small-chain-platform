@@ -35,9 +35,9 @@ function parseJob(value: unknown): JobSummary {
   return value as unknown as JobSummary;
 }
 
-async function readJSON(path: string, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<unknown> {
+async function readJSON(path: string, signal?: AbortSignal, fetcher: typeof fetch = fetch, method = "GET"): Promise<unknown> {
   const response = await fetcher(path, {
-    headers: { Accept: "application/json" }, signal,
+    headers: { Accept: "application/json" }, signal, ...(method === "GET" ? {} : { method }),
   });
   if (!response.ok) {
     let payload: unknown;
@@ -88,6 +88,7 @@ export interface JobEvent {
 }
 export interface EventPage { events: JobEvent[]; next_cursor?: string }
 export type SnapshotClient = (id: string, signal?: AbortSignal) => Promise<JobSnapshot>;
+export type CancelClient = SnapshotClient;
 export type EventsClient = (id: string, options?: { cursor?: string; signal?: AbortSignal }) => Promise<EventPage>;
 
 const optionalString = (value: unknown) => value === undefined || typeof value === "string";
@@ -95,6 +96,16 @@ const decimalString = (value: unknown): value is string => typeof value === "str
 
 export async function getJob(id: string, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<JobSnapshot> {
   const job = await readJSON(`/v1/jobs/${encodeURIComponent(id)}`, signal, fetcher);
+  return parseSnapshot(id, job);
+}
+
+export async function cancelJob(id: string, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<JobSnapshot> {
+  const job = parseSnapshot(id, await readJSON(`/v1/jobs/${encodeURIComponent(id)}/cancel`, signal, fetcher, "POST"));
+  if (job.state !== "canceled") throw new ApiError("The cancel response did not confirm cancellation.", 502, "invalid_response");
+  return job;
+}
+
+function parseSnapshot(id: string, job: unknown): JobSnapshot {
   if (!record(job) || !record(job.spec) || job.id !== id ||
     typeof job.spec.kind !== "string" || typeof job.spec.payload !== "string" ||
     !Number.isInteger(job.spec.max_attempts) || !Number.isInteger(job.spec.timeout_ms) ||

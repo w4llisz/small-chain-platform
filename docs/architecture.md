@@ -335,7 +335,7 @@ request versions keep stale first-page or older-page responses from overwriting
 the active filter; failed older pages preserve already loaded rows for retry.
 There is no automatic polling or implied live snapshot. Tables retain readable
 state text, UTC timestamps and keyboard-accessible horizontal scrolling.
-Deployment, UI cancellation and browser E2E remain planned.
+Deployment and browser E2E remain planned; M3.4 adds the cancellation workflow below.
 
 M3.3 adds a selected-job detail view. Snapshot and retained event history are
 independent requests started in parallel; one resource can fail and retry while
@@ -353,6 +353,24 @@ cursor. A 404 explains the retention boundary instead of presenting an empty
 history as evidence that the job never existed. React component and typed-client
 tests verify these transitions; browser visual QA and real-backend E2E are still
 unverified.
+
+M3.4 connects the existing cancellation endpoint to the detail snapshot. Only
+queued/running/retrying snapshots offer the action, which requires a separate
+confirmation explaining cooperative cancellation and irreversible side effects.
+A synchronous ref guard and disabled controls allow only one in-flight POST.
+The typed client validates that a successful response identifies the requested
+job and confirms canceled state. No local optimistic state transition is used.
+
+Every settled cancel attempt remounts snapshot/history resources and restarts
+the filtered job list from its first page, discarding obsolete list cursors.
+A 409 means completion won the race: the UI explains that result and reloads
+authoritative state. A transport failure is explicitly uncertain because commit
+may have succeeded before the response was lost; the UI reads state again and
+does not automatically repeat the mutation. Read failures remain independently
+retryable. Closing or switching the detail aborts pending fetches and ignores
+late callbacks, but cannot undo a cancellation already committed by the API.
+These behaviors have component/client coverage; real-backend browser E2E and
+visual QA remain unverified.
 
 ```mermaid
 flowchart TD

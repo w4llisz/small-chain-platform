@@ -9,6 +9,27 @@ const job: JobSummary = { id: "job-1", kind: "demo.checksum", state: "failed", a
 
 describe("operations console", () => {
   afterEach(() => vi.restoreAllMocks());
+  it("refreshes the list after cancelling the selected job", async () => {
+    const running = { ...job, state: "running" as const, error: undefined };
+    const canceled = { ...job, state: "canceled" as const };
+    let didCancel = false;
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (init?.method === "POST") didCancel = true;
+      const current = didCancel ? canceled : running;
+      return new Response(JSON.stringify(String(input).includes("/events?") ? { events: [] } : {
+        ...current, spec: { kind: job.kind, payload: "hello", max_attempts: 3, timeout_ms: 1000 },
+      }));
+    });
+    const loadJobs = vi.fn<JobsClient>().mockResolvedValueOnce({ jobs: [running] }).mockResolvedValue({ jobs: [canceled] });
+    render(<App loadJobs={loadJobs} />);
+    await userEvent.click(await screen.findByRole("button", { name: job.id }));
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel job" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm cancellation" }));
+    expect(await screen.findByText("canceled", { selector: "dd" })).toBeTruthy();
+    expect(await screen.findByText("Canceled", { selector: "td .status" })).toBeTruthy();
+    expect(loadJobs).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  });
   it("opens a selected job's snapshot and history, then closes the detail view", async () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const body = String(input).includes("/events?") ? { events: [] } : {
