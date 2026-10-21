@@ -5,7 +5,7 @@ GO ?= go
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration
+.PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -36,3 +36,11 @@ test-integration:
 	SMALL_CHAIN_WORKER_BINARY="$(CURDIR)/bin/small-chain-worker-integration" \
 	SMALL_CHAIN_API_BINARY="$(CURDIR)/bin/small-chain-api-integration" \
 		$(GO) test -tags=integration -race -count=1 -timeout=120s -v ./internal/postgres ./internal/dbworker ./internal/httpapi
+
+test-e2e:
+	@test -n "$$TEST_DATABASE_URL" || (echo "TEST_DATABASE_URL is required" >&2; exit 1)
+	mkdir -p bin
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/migrate-e2e ./cmd/migrate
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-api-e2e ./cmd/small-chain
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-worker-e2e ./cmd/small-chain-worker
+	./scripts/e2e.sh

@@ -2,5 +2,6 @@
 /coverage.out
 /web/dist/
 /web/node_modules/
+/web/test-results/
 *.log
 .env

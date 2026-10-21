@@ -369,8 +369,28 @@ may have succeeded before the response was lost; the UI reads state again and
 does not automatically repeat the mutation. Read failures remain independently
 retryable. Closing or switching the detail aborts pending fetches and ignores
 late callbacks, but cannot undo a cancellation already committed by the API.
-These behaviors have component/client coverage; real-backend browser E2E and
-visual QA remain unverified.
+These behaviors have component/client coverage. M3.5 adds the real-backend
+browser boundary below; subjective cross-browser visual QA remains outside the
+automated acceptance test.
+
+## M3.5: bounded real-stack browser workflow (implemented)
+
+The Playwright workflow is deliberately one end-to-end reliability assertion,
+not a second integration suite. A disposable PostgreSQL service is migrated,
+then the compiled API, one database worker and Vite start as separate processes.
+The test submits a delayed checksum job through the same relative `/v1` path as
+the browser, waits until the worker's committed lease is visible, filters and
+selects that row, and requires the persisted `claimed` event and worker owner.
+It confirms cancellation in the UI and finally reads the authoritative
+`canceled` state back through HTTP.
+
+One browser worker avoids inter-test database interference. Readiness waits are
+20 seconds, the test is capped at 30 seconds, and the CI job at 15 minutes.
+The shell harness terminates every child process and prints bounded logs on
+failure. Unit tests remain separate: Vitest only searches `src/**/*.test.*`, so
+it cannot accidentally load Playwright specs. Traces and screenshots are kept
+on Playwright failures; their existence is diagnostic evidence, not a claim of
+successful visual review.
 
 ```mermaid
 flowchart TD

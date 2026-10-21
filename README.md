@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 includes a React/TypeScript console with tested filters, pagination, selected-job snapshots, lifecycle history and confirmed cancellation; browser E2E and tracing remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 includes a React/TypeScript console with tested filters, pagination, selected-job snapshots, lifecycle history and confirmed cancellation. A bounded Chromium workflow exercises that console against the real Go processes and PostgreSQL in CI; distributed tracing remains planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -67,7 +67,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
-| Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, GitHub Actions |
+| Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, and real Go/PostgreSQL/Chromium operator workflow in GitHub Actions |
 
 ## Architecture
 
@@ -96,7 +96,8 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `internal/dbworker/` | Bounded PostgreSQL poll/heartbeat/recovery loop with shutdown and fencing-loss tests |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
-| `web/` | React/TypeScript list, selected-job snapshot/history and client/component tests |
+| `web/` | React/TypeScript console, client/component tests and bounded Playwright operator workflow |
+| `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
 | `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
@@ -145,8 +146,25 @@ npm run dev
 Vite proxies `/v1` to the API at `127.0.0.1:8080`. `make web-verify` runs a
 clean dependency install, component/client tests, TypeScript checks and a
 production build. The Go `make verify` target remains independent. The console
-does not poll: reload to see changed state. Production asset hosting and browser
-E2E verification remain future work; a successful build is not a deployment.
+does not poll: reload to see changed state. Production asset hosting remains
+future work; a successful build is not a deployment.
+
+The browser workflow requires an empty disposable PostgreSQL database and a
+locally installed Playwright Chromium. It deliberately uses one browser worker
+and one Go worker so the running-job cancellation race is reproducible:
+
+```sh
+cd web
+npm ci
+npx playwright install chromium
+cd ..
+TEST_DATABASE_URL='postgres://small_chain:local_demo_only@localhost:5432/small_chain_e2e?sslmode=disable' make test-e2e
+```
+
+`test-e2e` applies migrations, starts the real API, worker and Vite processes,
+then seeds a five-second job. The test filters for the claimed job, inspects its
+persisted history, confirms cancellation and reads the canceled state back
+through the API. CI provisions the disposable PostgreSQL service and Chromium.
 
 Select a queued/running/retrying job and choose **Cancel job**, then confirm.
 The console refreshes the snapshot, history and filtered list after the request.

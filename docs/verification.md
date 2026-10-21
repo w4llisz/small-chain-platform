@@ -225,3 +225,20 @@ input bounds and both list index shapes. The process case paginates queued jobs
 after API restart, rejects reuse of a cursor under another state filter and
 finds a canceled job through the filter. This proves contract correctness for
 the test workload, not a cross-request snapshot or measured query latency.
+
+## M3.5 real-stack operator workflow — 2026-10-21
+
+Local, Linux amd64 with Go 1.27.2 and Node.js 24.19.0: `make verify`, all 32
+Vitest client/component tests, TypeScript checking, the Vite production build,
+shell syntax checking and Playwright test discovery passed. This local runtime
+did not provide PostgreSQL or a Chromium installation, so it did not execute
+the real-stack browser case and makes no local E2E-pass claim.
+
+The candidate workflow provisions PostgreSQL 16 and Chromium, applies the real
+migrations, then starts the compiled API, one database worker and Vite. Its one
+30-second Playwright case submits a delayed job, waits for a committed running
+lease, finds that job through the Running filter, inspects its claimed event and
+owner, confirms cancellation, and requires a persisted canceled state from the
+API. The CI result is the acceptance evidence; traces and screenshots are
+retained only on failure. This proves one Chromium operator path, not visual
+fidelity across browsers or production deployment.
