@@ -10,12 +10,13 @@ Target investment: roughly 45–60 focused hours for M1–M4, adjusted by progre
 | --- | --- | --- | --- |
 | M1 — execution foundation (complete) | Go API, memory engine, bounded pool, retries, cancel, probes, metrics, tests/CI; 10–14 h | Concurrent same-key requests execute once; safe overload; immutable terminal results; signal drain/deadline cancellation | `make verify`, CI workflow, design decisions |
 | M2 — durable scheduling (complete) | PostgreSQL migrations, admission, leases, fenced completion, delayed retries, events/retention; 14–18 h | Jobs survive restart; two processes claim safely; killed worker recovers; stale completion rejected; retry budget survives crashes | DB integration tests, recovery script, query plans |
-| M3 — operator console (in progress) | React/TypeScript, paginated/filterable list, details/events, cancel; 8–12 h | Find failures and causes; cancel queued/running tasks; loading/error states; Playwright workflow passes | API/client/component tests and bounded real-stack Playwright CI; recorded demo remains optional evidence |
-| M4 — operational evidence | Compose demo, histograms, OpenTelemetry, dashboard, reproducible load/failure tests; 12–16 h | One-command stack; trace admission/attempts; runbook matches failures; measurements include hardware/commit/workload | Benchmark report with raw data; incident write-up |
+| M3 — operator console (complete) | React/TypeScript, paginated/filterable list, details/events, cancel; 8–12 h | Find failures and causes; cancel queued/running tasks; loading/error states; Playwright workflow passes | 32 client/component tests and green real Go/PostgreSQL/Chromium CI run #43 |
+| M4 — operational evidence (in progress) | Compose demo, durable metrics, OpenTelemetry, dashboard, reproducible load/failure tests; 12–16 h | One-command stack; trace admission/attempts; runbook matches failures; measurements include hardware/commit/workload | Database-backed gauges first; benchmark report and incident write-up later |
 
-M1 is the runnable baseline and M2 is the completed durable platform core.
-**M3 is the current priority:** expose that reliability work through a focused
-operator workflow without expanding into a general scheduler product.
+M1 is the runnable baseline, M2 is the completed durable platform core, and M3
+is the completed operator workflow. **M4 is the current priority:** add evidence
+that is generated from the real durable system without inventing production
+scale, latency or reliability claims.
 
 ## Next PRs
 
@@ -36,9 +37,11 @@ operator workflow without expanding into a general scheduler product.
    - **M3.3 read-only detail/history implemented:** selecting a job loads its normalized spec, state, attempts, result/error and retained lifecycle events through the existing Go endpoints. Snapshot and history start independently; event pages append oldest-first and preserve decimal string IDs/cursors beyond JavaScript's safe integer range. Loading, empty history, retained-away 404, independent retries and aborted stale responses have client/component coverage (20 frontend tests total). Browser visual QA and real-backend E2E remain unverified.
    - **M3.4 cancellation implemented:** the detail view offers a two-step confirmation only for queued/running/retrying snapshots. A pending request is guarded against duplicate clicks. After success, 409, or an uncertain failure, the console reloads snapshot, event history and the filtered list; it never optimistically declares canceled state or automatically repeats a write. Client/component tests cover confirmation dismissal, duplicate clicks, completion winning with 409, ambiguous network failure, terminal-state controls, selection changes and list refresh (32 frontend tests total). Browser visual QA and real-backend E2E remain unverified.
    - **M3.5 real-stack browser workflow implemented:** a single Chromium test runs against a migrated disposable PostgreSQL database, the compiled Go API, one Go worker and Vite. It seeds a five-second checksum job, waits for a real lease claim, filters/selects it, inspects the claimed event and owner, confirms cancellation, then reads the persisted canceled state through HTTP. Readiness waits, browser/test timeouts, process count and cleanup are bounded. CI installs Chromium and owns the PostgreSQL service; local unit/build checks do not pretend to execute this workflow without those dependencies.
-   - **Next small task — M3.6:** close M3 after observing the first green real-stack CI run, then add one concise failure-mode note or captured trace only from an actually executed workflow. Do not expand the console feature set.
+   - **M3.6 complete:** real-stack CI run #43 passed its web, Go, PostgreSQL and Chromium jobs, including the persisted cancellation assertion. M3 is closed; subjective cross-browser visual review and a recorded demo remain optional evidence, not release blockers.
 3. `feat/operations-console`: details/events, cancellation and Playwright workflow. Optional manual retry creates a new job/key with explicit lineage; never mutate a terminal record.
 4. `feat/observability-and-evidence`: Compose with PostgreSQL/metrics/traces, dashboard, load generator and measured report.
+   - **M4.1 durable state gauges implemented:** PostgreSQL mode aggregates the six retained lifecycle states from the database under a one-second scrape budget. A successful scrape publishes all states including zeroes. A failed read publishes `small_chain_job_state_metrics_up 0`, logs the failure and omits state gauges rather than serving stale or process-local values. Memory mode retains its in-process source. Real database and API-process tests cover the snapshot and exposition.
+   - **Next small task — M4.2:** add bounded attempt-duration observations at the durable worker boundary with explicit buckets and tests; do not claim percentiles or production latency until a reproducible workload runs.
 
 ## Build on existing experience
 

@@ -242,3 +242,18 @@ owner, confirms cancellation, and requires a persisted canceled state from the
 API. The CI result is the acceptance evidence; traces and screenshots are
 retained only on failure. This proves one Chromium operator path, not visual
 fidelity across browsers or production deployment.
+
+## M4.1 durable state gauges — 2026-10-22
+
+Local, Linux amd64 with Go 1.27.2: the focused HTTP/PostgreSQL packages run with
+the race detector, the full `make verify` suite and integration-tag compilation
+are required before submission. The local runtime has no PostgreSQL service, so
+the real database assertion remains a candidate-commit CI gate.
+
+The store test creates one queued and one canceled record and requires explicit
+zeroes for the other four states from a single database snapshot. The API unit
+case injects a state-read failure and requires HTTP 200, an `up` gauge of zero,
+and no potentially stale `small_chain_jobs` series. The existing real API
+process test now requires two queued and zero canceled rows after retention.
+These gauges describe retained state at scrape time; they do not measure queue
+latency, execution duration, throughput or an SLO.

@@ -135,7 +135,10 @@ func TestPostgresHTTPPersistsAdmissionAcrossRestart(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	status, body, _ = httpRequest(t, http.MethodGet, base+"/metrics", "", "")
-	if status != http.StatusOK || !bytes.Contains(body, []byte(`small_chain_backend_info{storage="postgres"} 1`)) {
+	if status != http.StatusOK || !bytes.Contains(body, []byte(`small_chain_backend_info{storage="postgres"} 1`)) ||
+		!bytes.Contains(body, []byte(`small_chain_job_state_metrics_up 1`)) ||
+		!bytes.Contains(body, []byte(`small_chain_jobs{state="queued"} 2`)) ||
+		!bytes.Contains(body, []byte(`small_chain_jobs{state="canceled"} 0`)) {
 		t.Fatalf("postgres metrics: %d %s", status, body)
 	}
 	second.stop(t)

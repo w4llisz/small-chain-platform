@@ -7,12 +7,20 @@
 | Signal | Interpretation |
 | --- | --- |
 | `small_chain_queue_depth` | Pending entries including canceled tombstones |
-| `small_chain_jobs{state="running"}` | Running state; not necessarily live goroutines after cooperative cancel |
-| `small_chain_jobs{state="retrying"}` | Worker slots occupied by backoff |
+| `small_chain_job_state_metrics_up` | `1` when this scrape read state counts; `0` means state gauges are intentionally omitted |
+| `small_chain_jobs{state="running"}` | Retained running jobs; PostgreSQL mode reads the database, not API-process memory |
+| `small_chain_jobs{state="retrying"}` | Retained jobs waiting for another durable attempt; not an in-process backoff count in PostgreSQL mode |
 | `small_chain_attempts_total`, `small_chain_retries_total` | Started attempts / scheduled retries (which can be canceled) |
 | `small_chain_rejections_total` | Queue, retention and shutdown rejections |
 | `small_chain_attempt_duration_seconds_sum/count` | Mean completed-attempt duration; no percentiles |
 | `small_chain_http_requests_total`, `small_chain_http_server_errors_total` | Completed routes including probes; scrape excludes itself until complete |
+
+In memory mode, job-state gauges come from the engine's locked snapshot. In
+PostgreSQL mode, one retention-bounded aggregate supplies all six states under a
+one-second scrape budget. If it fails, alert on
+`small_chain_job_state_metrics_up == 0`; do not interpret absent job-state
+series as zero. The endpoint remains available so process-level evidence is not
+lost during a database incident.
 
 Metrics reset on restart; state gauges count retained records. M4 adds wait-time histograms, admission reasons and traces.
 

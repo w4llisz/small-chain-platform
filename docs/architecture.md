@@ -403,3 +403,20 @@ flowchart TD
 ```
 
 The console adds filtered job lists, details, attempts and cancellation. Playwright proves the workflow. Kubernetes, DAG scheduling, multi-region replication, billing, arbitrary code execution and blockchain consensus are outside the portfolio release scope.
+
+## M4.1: authoritative durable state gauges (implemented)
+
+The API keeps HTTP counters process-local because they describe that process,
+but PostgreSQL job-state gauges come from PostgreSQL. Each `/metrics` scrape
+runs one `GROUP BY state` query over the retention-bounded `jobs` table with an
+outer one-second request budget. The exporter writes all six known states,
+including zeroes, from one query result so a dashboard does not retain a missing
+series merely because a state is empty.
+
+Database failure is data, not a zero count. The endpoint continues to expose
+backend identity and process counters with HTTP 200, publishes
+`small_chain_job_state_metrics_up 0`, logs `metrics.job_state_read_failed`, and
+omits every `small_chain_jobs` series for that scrape. This lets Prometheus alert
+on collection health without confusing an unavailable source with an empty
+queue. No cross-scrape snapshot, attempt histogram, percentile, SLO or
+throughput claim is implied.

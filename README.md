@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 includes a React/TypeScript console with tested filters, pagination, selected-job snapshots, lifecycle history and confirmed cancellation. A bounded Chromium workflow exercises that console against the real Go processes and PostgreSQL in CI; distributed tracing remains planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 has started with authoritative PostgreSQL job-state metrics; distributed tracing and reproducible measurements remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -66,7 +66,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Operations console | Job selection shows normalized spec, result/error and forward-paged history; confirmed cancellation refreshes authoritative reads, handles 409 and guards duplicate requests |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
-| Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, Prometheus text metrics |
+| Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, process counters and authoritative PostgreSQL job-state gauges |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, and real Go/PostgreSQL/Chromium operator workflow in GitHub Actions |
 
 ## Architecture
@@ -178,7 +178,7 @@ repeating the write. Closing the view cannot undo a committed cancellation.
 - M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window. The API deletes up to 100 eligible terminal rows at startup and every minute by default; `-retention-interval=0` disables this maintenance.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
-- PostgreSQL mode currently exposes HTTP counters and a backend identity metric; its job/attempt gauges are not fabricated from process-local state. Durable metrics, percentile histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.
+- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. Durable attempt histograms, OpenTelemetry traces and load-test results are future work. No throughput claim has been measured yet.
 - PostgreSQL records all low-frequency lifecycle transitions but deliberately omits heartbeat renewals. Its event endpoint is PostgreSQL-only; retained events are deleted with their job during bounded terminal cleanup.
 - PostgreSQL job listing is also unavailable in memory mode. List pages are stable against newer inserts but are not a multi-request snapshot; retention can remove older rows between pages.
 

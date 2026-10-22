@@ -85,8 +85,22 @@ func TestHTTPContract(t *testing.T) {
 		})
 	}
 	w = request(h, "GET", "/metrics", "", "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "small_chain_jobs{state=\"succeeded\"}") || !strings.Contains(w.Body.String(), "small_chain_http_requests_total ") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "small_chain_job_state_metrics_up 1") || !strings.Contains(w.Body.String(), "small_chain_jobs{state=\"succeeded\"}") || !strings.Contains(w.Body.String(), "small_chain_http_requests_total ") {
 		t.Fatal(w.Body.String())
+	}
+}
+
+func TestMetricsExposeStateReadFailureWithoutStaleGauges(t *testing.T) {
+	engine, _ := fixture(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	failedRead := func(context.Context) (postgres.JobCounts, error) { return nil, context.DeadlineExceeded }
+	api := newAPI(memoryBackend{engine: engine}, nil, failedRead, "postgres", logger)
+	w := request(api, "GET", "/metrics", "", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "small_chain_job_state_metrics_up 0") {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "small_chain_jobs{") {
+		t.Fatalf("failed scrape exposed stale state gauges: %s", w.Body.String())
 	}
 }
 

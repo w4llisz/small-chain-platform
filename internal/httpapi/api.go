@@ -20,6 +20,7 @@ import (
 type API struct {
 	backend      jobBackend
 	stats        func() jobs.Stats
+	jobCounts    func(context.Context) (postgres.JobCounts, error)
 	storage      string
 	log          *slog.Logger
 	mux          *http.ServeMux
@@ -30,18 +31,18 @@ type API struct {
 }
 
 func New(engine *jobs.Engine, logger *slog.Logger) *API {
-	return newAPI(memoryBackend{engine: engine}, engine.Stats, "memory", logger)
+	return newAPI(memoryBackend{engine: engine}, engine.Stats, nil, "memory", logger)
 }
 
 // NewPostgres exposes durable admission, reads and cancellation. Store.Submit
 // commits before returning, so HTTP 202 means the job is durable. Migrations and
 // worker execution remain separate process responsibilities.
 func NewPostgres(store *postgres.Store, logger *slog.Logger) *API {
-	return newAPI(postgresBackend{store: store}, nil, "postgres", logger)
+	return newAPI(postgresBackend{store: store}, nil, store.CountJobsByState, "postgres", logger)
 }
 
-func newAPI(backend jobBackend, stats func() jobs.Stats, storage string, logger *slog.Logger) *API {
-	a := &API{backend: backend, stats: stats, storage: storage, log: logger}
+func newAPI(backend jobBackend, stats func() jobs.Stats, jobCounts func(context.Context) (postgres.JobCounts, error), storage string, logger *slog.Logger) *API {
+	a := &API{backend: backend, stats: stats, jobCounts: jobCounts, storage: storage, log: logger}
 	a.accepting.Store(true)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/jobs", a.submit)
@@ -284,20 +285,43 @@ func (a *API) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "small_chain_backend_info{storage=%q} 1\n", a.storage)
 	metric("small_chain_http_requests_total", "counter", "Completed HTTP requests including probes.", a.requests.Load())
 	metric("small_chain_http_server_errors_total", "counter", "HTTP responses with 5xx status.", a.serverErrors.Load())
+	var (
+		counts postgres.JobCounts
+		stats  jobs.Stats
+		err    error
+	)
+	if a.stats != nil {
+		stats = a.stats()
+		counts = postgres.JobCounts{
+			jobs.Queued: int64(stats.States[jobs.Queued]), jobs.Running: int64(stats.States[jobs.Running]),
+			jobs.Retrying: int64(stats.States[jobs.Retrying]), jobs.Succeeded: int64(stats.States[jobs.Succeeded]),
+			jobs.Failed: int64(stats.States[jobs.Failed]), jobs.Canceled: int64(stats.States[jobs.Canceled]),
+		}
+	} else {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		defer cancel()
+		counts, err = a.jobCounts(ctx)
+	}
+	if err != nil {
+		a.log.Error("metrics.job_state_read_failed", "storage", a.storage, "error", err)
+		metric("small_chain_job_state_metrics_up", "gauge", "Whether this scrape read authoritative job-state counts.", 0)
+	} else {
+		metric("small_chain_job_state_metrics_up", "gauge", "Whether this scrape read authoritative job-state counts.", 1)
+		fmt.Fprintln(w, "# HELP small_chain_jobs Retained jobs by lifecycle state.\n# TYPE small_chain_jobs gauge")
+		for _, state := range []jobs.State{jobs.Queued, jobs.Running, jobs.Retrying, jobs.Succeeded, jobs.Failed, jobs.Canceled} {
+			fmt.Fprintf(w, "small_chain_jobs{state=%q} %d\n", state, counts[state])
+		}
+	}
 	if a.stats == nil {
 		return
 	}
-	s := a.stats()
+	s := stats
 	metric("small_chain_queue_depth", "gauge", "Pending channel entries including canceled tombstones.", s.QueueDepth)
 	metric("small_chain_workers", "gauge", "Configured worker slots, including slots occupied by retry backoff.", s.Workers)
 	metric("small_chain_record_capacity", "gauge", "Maximum retained job records.", s.MaxJobs)
 	metric("small_chain_attempts_total", "counter", "Started execution attempts.", s.Attempts)
 	metric("small_chain_retries_total", "counter", "Scheduled retries.", s.Retries)
 	metric("small_chain_rejections_total", "counter", "Admission rejections for queue, retention capacity or shutdown.", s.Rejected)
-	fmt.Fprintln(w, "# HELP small_chain_jobs Retained jobs by lifecycle state.\n# TYPE small_chain_jobs gauge")
-	for _, state := range []jobs.State{jobs.Queued, jobs.Running, jobs.Retrying, jobs.Succeeded, jobs.Failed, jobs.Canceled} {
-		fmt.Fprintf(w, "small_chain_jobs{state=%q} %d\n", state, s.States[state])
-	}
 	fmt.Fprintln(w, "# HELP small_chain_attempt_duration_seconds Execution attempt duration, excluding backoff; no quantiles.\n# TYPE small_chain_attempt_duration_seconds summary")
 	fmt.Fprintf(w, "small_chain_attempt_duration_seconds_sum %g\nsmall_chain_attempt_duration_seconds_count %d\n", s.DurationSeconds, s.Completed)
 }
