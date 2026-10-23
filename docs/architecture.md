@@ -420,3 +420,25 @@ omits every `small_chain_jobs` series for that scrape. This lets Prometheus aler
 on collection health without confusing an unavailable source with an empty
 queue. No cross-scrape snapshot, attempt histogram, percentile, SLO or
 throughput claim is implied.
+
+## M4.2: process-local durable attempt histogram (implemented)
+
+The durable worker measures one boundary: wall-clock time inside the trusted
+executor call. It starts after a committed claim reaches the handler and stops
+when that handler returns, including cooperative timeout, lease-loss
+cancellation and recovered panic. Claim polling, heartbeat calls, retry delay
+and fenced outcome persistence are intentionally outside the observation, so
+the histogram is not presented as end-to-end job latency.
+
+Each process keeps 12 fixed cumulative buckets from 5 milliseconds through the
+30-second accepted task timeout, plus `+Inf`, count and sum. A mutex makes an
+individual scrape internally consistent while preserving the worker's bounded
+100-attempt concurrency. There are no job IDs, owners, outcomes or other
+unbounded labels. `-metrics-addr` is opt-in and should be a distinct loopback
+address for each worker; the series resets on process restart and Prometheus is
+expected to supply its normal instance identity when scraping multiple workers.
+
+This is raw measurement plumbing, not a latency result. Percentiles require a
+documented workload and must be calculated from aggregated histogram buckets;
+no production distribution, SLO or end-to-end timing claim follows from the
+unit tests.

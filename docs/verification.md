@@ -257,3 +257,21 @@ and no potentially stale `small_chain_jobs` series. The existing real API
 process test now requires two queued and zero canceled rows after retention.
 These gauges describe retained state at scrape time; they do not measure queue
 latency, execution duration, throughput or an SLO.
+
+## M4.2 durable-worker attempt histogram — 2026-10-23
+
+Local, Linux amd64 with Go 1.27.2: `make verify` passed formatting, vet, all Go
+tests under the race detector, static builds and the real-process memory-mode
+smoke test. Integration-tagged PostgreSQL, worker-process and HTTP packages
+compiled and passed vet; `go mod verify` also passed. The local runtime did not
+provide PostgreSQL, so those compile-only checks are not database execution
+evidence.
+
+Focused tests execute three attempts concurrently and require one metric
+observation for each success, retryable failure and recovered panic. Direct
+histogram tests require exact cumulative bucket, `+Inf`, sum and count output,
+including an observation beyond the accepted 30-second task timeout. The
+command handler test requires Prometheus text content on `GET /metrics` and a
+405 response for `POST`. The histogram describes process-local trusted executor
+wall time; it resets on restart and excludes queue wait and every database call.
+No percentile, workload latency, throughput or SLO result is claimed.

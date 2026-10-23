@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,6 +38,7 @@ func run(args []string, logger *slog.Logger) error {
 	retryMax := flags.Duration("retry-max", 5*time.Second, "maximum retry delay")
 	recovery := flags.Duration("recovery-interval", time.Second, "expired-lease sweep interval")
 	recoveryBatch := flags.Int("recovery-batch", 100, "maximum leases recovered per sweep")
+	metricsAddr := flags.String("metrics-addr", "", "optional worker metrics listen address (for example 127.0.0.1:9091)")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -72,11 +75,64 @@ func run(args []string, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	var (
+		metricsServer *http.Server
+		metricsErr    <-chan error
+	)
+	if *metricsAddr != "" {
+		listener, err := net.Listen("tcp", *metricsAddr)
+		if err != nil {
+			return fmt.Errorf("metrics listen: %w", err)
+		}
+		metricsServer = &http.Server{
+			Handler:           metricsHandler(worker),
+			ReadHeaderTimeout: 2 * time.Second,
+			ReadTimeout:       2 * time.Second,
+			WriteTimeout:      2 * time.Second,
+			IdleTimeout:       30 * time.Second,
+			MaxHeaderBytes:    8 << 10,
+		}
+		serveErr := make(chan error, 1)
+		metricsErr = serveErr
+		go func() { serveErr <- metricsServer.Serve(listener) }()
+		logger.Info("worker.metrics_started", "address", listener.Addr().String())
+	}
 	logger.Info("worker.started", "owner", cfg.Owner, "concurrency", cfg.Concurrency,
 		"lease_duration", cfg.LeaseDuration, "heartbeat_interval", cfg.HeartbeatInterval)
-	if err := worker.Run(ctx); err != nil {
-		return err
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- worker.Run(ctx) }()
+	var workerErr error
+	if metricsErr == nil {
+		workerErr = <-workerDone
+	} else {
+		select {
+		case workerErr = <-workerDone:
+		case err := <-metricsErr:
+			if !errors.Is(err, http.ErrServerClosed) {
+				workerErr = fmt.Errorf("serve worker metrics: %w", err)
+			}
+			stop()
+			workerErr = errors.Join(workerErr, <-workerDone)
+		}
+	}
+	if metricsServer != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		shutdownErr := metricsServer.Shutdown(shutdownCtx)
+		shutdownCancel()
+		workerErr = errors.Join(workerErr, shutdownErr)
+	}
+	if workerErr != nil {
+		return workerErr
 	}
 	logger.Info("worker.stopped", "owner", cfg.Owner)
 	return nil
+}
+
+func metricsHandler(worker *dbworker.Worker) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /metrics", func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		_, _ = response.Write([]byte(worker.PrometheusMetrics()))
+	})
+	return mux
 }

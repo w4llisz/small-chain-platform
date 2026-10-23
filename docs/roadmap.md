@@ -41,7 +41,8 @@ scale, latency or reliability claims.
 3. `feat/operations-console`: details/events, cancellation and Playwright workflow. Optional manual retry creates a new job/key with explicit lineage; never mutate a terminal record.
 4. `feat/observability-and-evidence`: Compose with PostgreSQL/metrics/traces, dashboard, load generator and measured report.
    - **M4.1 durable state gauges implemented:** PostgreSQL mode aggregates the six retained lifecycle states from the database under a one-second scrape budget. A successful scrape publishes all states including zeroes. A failed read publishes `small_chain_job_state_metrics_up 0`, logs the failure and omits state gauges rather than serving stale or process-local values. Memory mode retains its in-process source. Real database and API-process tests cover the snapshot and exposition.
-   - **Next small task — M4.2:** add bounded attempt-duration observations at the durable worker boundary with explicit buckets and tests; do not claim percentiles or production latency until a reproducible workload runs.
+   - **M4.2 durable-worker attempt histogram implemented:** each worker records trusted executor wall time in 12 fixed cumulative buckets from 5 ms through the 30-second task limit plus `+Inf`, with a mutex-protected consistent scrape snapshot. An opt-in loopback metrics listener exposes the Prometheus histogram. It deliberately excludes database claim, heartbeat and outcome persistence, has no user-controlled labels, and resets with the process. Race tests cover concurrent worker accounting and exact bucket exposition; no percentile or production-latency claim is made.
+   - **Next small task — M4.3:** add a bounded Compose demo for PostgreSQL, migration, API and one worker, including health checks and documented teardown; keep Prometheus/Grafana and tracing as later explicit increments.
 
 ## Build on existing experience
 

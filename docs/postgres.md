@@ -1,4 +1,4 @@
-# PostgreSQL durable core (M2.1–M2.11)
+# PostgreSQL durable core (M2.1–M2.12)
 
 Implemented: embedded forward-only migrations and an `internal/postgres.Store`
 with context-aware admission, claiming, heartbeat, outcome and recovery
@@ -26,7 +26,9 @@ make migrate
 make migrate  # no-op: checksums still checked
 go run ./cmd/small-chain -storage=postgres -retention-interval=1m -retention-batch=100
 # In another terminal, using the same DATABASE_URL:
-go run ./cmd/small-chain-worker -owner=local-worker
+go run ./cmd/small-chain-worker -owner=local-worker -metrics-addr=127.0.0.1:9091
+# In another terminal, inspect this worker process:
+curl http://127.0.0.1:9091/metrics
 export TEST_DATABASE_URL="$DATABASE_URL"
 make test-integration
 # Stop only this disposable container when finished:
@@ -38,8 +40,10 @@ real connection string. Migration commands require schema-creation privileges;
 tests create a random schema per case and drop only that schema at cleanup.
 The test database user must be able to create schemas. CI provisions the same
 PostgreSQL major version and runs the integration suite with the race detector.
-Each live worker needs a unique `-owner`; migrations must finish before the API
-or workers start. `DATABASE_URL` is intentionally not accepted as a flag. `make verify`
+Each live worker needs a unique `-owner` and, when enabled, a distinct
+`-metrics-addr`; migrations must finish before the API or workers start. Worker
+metrics default to disabled so multiple processes cannot silently contend for
+one port. `DATABASE_URL` is intentionally not accepted as a flag. `make verify`
 remains usable without a database. The explicit `make test-integration` target
 **fails**, rather than skips, without its URL.
 

@@ -3,8 +3,12 @@ package main
 import (
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/w4llisz/small-chain-platform/internal/dbworker"
 )
 
 func TestRunValidatesArgumentsBeforeConnecting(t *testing.T) {
@@ -28,5 +32,29 @@ func TestRunValidatesArgumentsBeforeConnecting(t *testing.T) {
 				t.Fatalf("run(%q) = %v, want error containing %q", test.args, err, test.want)
 			}
 		})
+	}
+}
+
+func TestMetricsHandlerExposesOnlyMetricsGET(t *testing.T) {
+	handler := metricsHandler(&dbworker.Worker{})
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /metrics status = %d", response.Code)
+	}
+	if got := response.Header().Get("Content-Type"); got != "text/plain; version=0.0.4; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if !strings.Contains(response.Body.String(), "small_chain_worker_attempt_duration_seconds_count 0\n") {
+		t.Fatalf("unexpected metrics:\n%s", response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/metrics", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /metrics status = %d, want 405", response.Code)
 	}
 }

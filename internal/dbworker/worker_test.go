@@ -139,6 +139,9 @@ func TestWorkerPersistsSuccessRetryAndPanic(t *testing.T) {
 	if store.recoveries == 0 {
 		t.Fatal("worker did not perform its startup recovery sweep")
 	}
+	if snapshot := worker.AttemptMetrics(); snapshot.Count != 3 {
+		t.Fatalf("attempt metric count = %d, want 3", snapshot.Count)
+	}
 }
 
 func TestHeartbeatLossCancelsAttemptWithoutPersistingOutcome(t *testing.T) {

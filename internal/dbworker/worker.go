@@ -54,12 +54,13 @@ func DefaultConfig(owner string) Config {
 // be called once. Canceling its context stops claims/recovery, then drains active
 // attempts; each attempt remains bounded by its persisted timeout.
 type Worker struct {
-	cfg     Config
-	store   LeaseStore
-	execute jobs.Executor
-	log     *slog.Logger
-	slots   chan struct{}
-	wg      sync.WaitGroup
+	cfg      Config
+	store    LeaseStore
+	execute  jobs.Executor
+	log      *slog.Logger
+	attempts attemptMetrics
+	slots    chan struct{}
+	wg       sync.WaitGroup
 }
 
 // ValidateConfig checks worker bounds without opening a database connection.
@@ -156,7 +157,9 @@ func (w *Worker) runClaim(claim postgres.Claim) {
 	done := make(chan outcome, 1)
 	spec, attempt := claim.Job.Spec, claim.Job.Attempts
 	go func() {
+		started := time.Now()
 		result, err := w.invoke(attemptCtx, spec, attempt)
+		w.attempts.observe(time.Since(started))
 		done <- outcome{result: result, err: err}
 	}()
 
@@ -185,6 +188,19 @@ func (w *Worker) runClaim(claim postgres.Claim) {
 			return // Never write an outcome after losing the lease.
 		}
 	}
+}
+
+// AttemptMetrics returns a consistent process-local snapshot. It measures only
+// trusted executor wall time, including calls that end after timeout,
+// cancellation or panic. Database claim, heartbeat and outcome writes are not
+// included.
+func (w *Worker) AttemptMetrics() AttemptMetricsSnapshot {
+	return w.attempts.snapshot()
+}
+
+// PrometheusMetrics renders the worker's process-local attempt histogram.
+func (w *Worker) PrometheusMetrics() string {
+	return w.attempts.prometheus()
 }
 
 func (w *Worker) persist(claim postgres.Claim, result outcome) {
