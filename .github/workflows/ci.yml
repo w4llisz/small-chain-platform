@@ -86,6 +86,8 @@ jobs:
         run: go tool cover -func=coverage.out
       - name: Build minimal non-root container
         run: docker build -t small-chain:ci .
+      - name: Exercise durable Compose stack
+        run: make compose-smoke
 
   postgres:
     runs-on: ubuntu-latest

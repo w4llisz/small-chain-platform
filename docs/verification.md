@@ -275,3 +275,26 @@ command handler test requires Prometheus text content on `GET /metrics` and a
 405 response for `POST`. The histogram describes process-local trusted executor
 wall time; it resets on restart and excludes queue wait and every database call.
 No percentile, workload latency, throughput or SLO result is claimed.
+
+[CI run #46](https://github.com/w4llisz/small-chain-platform/actions/runs/39943382842)
+completed successfully on 2026-10-23: `verify`, PostgreSQL integration,
+frontend verification and the real-stack Chromium E2E job all passed.
+
+## M4.3 health-ordered Compose demo — 2026-10-24
+
+Local, Linux amd64 with Go 1.27.2: `make verify` passed formatting, vet, all Go
+tests under the race detector, four static command builds and the real-process
+memory smoke test. The health probe unit test, Compose YAML parsing, Compose
+smoke shell syntax, integration-tag compilation/vet and module verification also
+passed. This runtime does not provide Docker, so it cannot execute the stack
+locally; no local Compose-pass claim is made.
+
+The CI smoke case validates the Compose model, builds the shared non-root
+scratch image, waits for PostgreSQL health and a successful one-shot migration,
+then checks API readiness and worker metrics. It submits one checksum task,
+requires the durable API to report `succeeded`, and requires both authoritative
+database metric collection and at least one worker-duration observation. A
+bounded failure path prints container state/logs, and the exit trap always
+removes the isolated project's containers and volume. This is startup and
+single-task evidence for the local demo topology, not a load, failover or
+production deployment result.

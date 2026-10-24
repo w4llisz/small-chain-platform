@@ -5,13 +5,15 @@ GO ?= go
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e
+.PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke
 run:
 	$(GO) run ./cmd/small-chain
 build:
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain ./cmd/small-chain
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-worker ./cmd/small-chain-worker
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/migrate ./cmd/migrate
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/healthcheck ./cmd/healthcheck
 fmt:
 	gofmt -w cmd internal
 check-fmt:
@@ -44,3 +46,15 @@ test-e2e:
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-api-e2e ./cmd/small-chain
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-worker-e2e ./cmd/small-chain-worker
 	./scripts/e2e.sh
+
+compose-up:
+	docker compose up --build --wait --wait-timeout 60
+
+compose-down:
+	docker compose down --remove-orphans
+
+compose-clean:
+	docker compose down --volumes --remove-orphans
+
+compose-smoke:
+	bash scripts/compose-smoke.sh

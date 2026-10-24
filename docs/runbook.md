@@ -13,6 +13,7 @@
 | `small_chain_attempts_total`, `small_chain_retries_total` | Started attempts / scheduled retries (which can be canceled) |
 | `small_chain_rejections_total` | Queue, retention and shutdown rejections |
 | `small_chain_attempt_duration_seconds_sum/count` | Mean completed-attempt duration; no percentiles |
+| `small_chain_worker_attempt_duration_seconds_bucket` | Process-local durable executor time in fixed buckets; excludes database calls |
 | `small_chain_http_requests_total`, `small_chain_http_server_errors_total` | Completed routes including probes; scrape excludes itself until complete |
 
 In memory mode, job-state gauges come from the engine's locked snapshot. In
@@ -23,6 +24,26 @@ series as zero. The endpoint remains available so process-level evidence is not
 lost during a database incident.
 
 Metrics reset on restart; state gauges count retained records. M4 adds wait-time histograms, admission reasons and traces.
+
+## Compose demo
+
+`make compose-up` builds the scratch image and waits up to one minute for the
+durable API and worker to become healthy. PostgreSQL is private to the Compose
+network; the API and worker metrics are available only on host loopback at
+ports 8080 and 9091. Inspect service state and logs with:
+
+```sh
+docker compose ps
+docker compose logs api worker migrate postgres
+curl http://127.0.0.1:8080/readyz
+curl http://127.0.0.1:9091/metrics
+```
+
+Use `make compose-down` to stop the stack while preserving its named database
+volume. Use `make compose-clean` when you intentionally want to delete that
+local demo data. `make compose-smoke` creates a separate project, verifies
+migration, readiness, one real task and both metrics endpoints, then always
+deletes its containers and volume.
 
 ## Failure demos
 
@@ -100,7 +121,8 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 - **Event history returns 501:** start the API with `-storage=postgres`; memory mode does not retain equivalent lifecycle evidence.
 - **Job list returns 501:** start the API with `-storage=postgres`; the operations list intentionally represents durable shared state only.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
-- **Missing traces/percentiles:** planned, not present; duration is sum/count only.
+- **Compose API or worker never starts:** inspect the one-shot `migrate` service first, then PostgreSQL health. Application services require a successful migration rather than retrying against an unknown schema.
+- **Missing traces/percentiles:** planned, not present; the durable worker exports fixed histogram buckets but no measured percentile claim.
 
 ## CI
 

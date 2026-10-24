@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now exposes authoritative PostgreSQL state gauges and process-local durable-worker attempt histograms; distributed tracing and reproducible measurements remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable state gauges, worker attempt histograms and a health-ordered Compose demo; distributed tracing and reproducible measurements remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -98,6 +98,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `web/` | React/TypeScript console, client/component tests and bounded Playwright operator workflow |
 | `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |
+| `compose.yaml` | Local PostgreSQL, one-shot migration, durable API and one worker with health-ordered startup |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
 | `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
@@ -117,6 +118,21 @@ docker run --rm -p 127.0.0.1:8080:8080 small-chain:local
 ```
 
 The binary defaults to loopback. The container listens on all container interfaces; publish it only on local loopback for this unauthenticated demo. No external credentials are needed.
+
+With Docker and the Compose v2 plugin, start the durable backend demo:
+
+```sh
+make compose-up
+curl http://127.0.0.1:8080/readyz
+curl http://127.0.0.1:9091/metrics
+make compose-down   # stop containers and preserve the PostgreSQL volume
+make compose-clean  # also delete the local demo volume
+```
+
+Compose waits for PostgreSQL health, runs migrations to successful completion,
+then starts the API and one worker. Only the API and worker metrics ports bind
+to host loopback; PostgreSQL remains on the private Compose network. The
+credentials in `compose.yaml` are limited to this local demonstration.
 
 For durable mode, follow the [PostgreSQL setup and test guide](docs/postgres.md). Apply migrations explicitly, then run the API and at least one worker:
 

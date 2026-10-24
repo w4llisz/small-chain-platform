@@ -442,3 +442,25 @@ This is raw measurement plumbing, not a latency result. Percentiles require a
 documented workload and must be calculated from aggregated histogram buckets;
 no production distribution, SLO or end-to-end timing claim follows from the
 unit tests.
+
+## M4.3: health-ordered local Compose stack (implemented)
+
+The local stack has four services and one persistent volume. PostgreSQL must
+pass `pg_isready` before the one-shot migration container runs. The API and
+worker both require that migration to exit successfully, so an incompatible or
+failed schema never produces a superficially healthy application process.
+Their health checks use a small static Go probe included in the same non-root
+scratch image: the API must answer `/readyz` and the worker metrics server must
+answer `/metrics`.
+
+PostgreSQL has no published host port. The unauthenticated API and worker
+metrics bind only to host loopback. The API receives 12 seconds to drain HTTP
+work; the worker receives 35 seconds, covering the accepted 30-second executor
+timeout. Runtime restart attempts are capped at three. Normal teardown preserves
+the named database volume, while the explicit clean target deletes it.
+
+The Compose smoke test uses a unique project, waits at most 60 seconds per
+endpoint, submits a checksum job and requires durable success plus API and
+worker metrics. Its exit trap prints service evidence on failure and always
+removes containers and the test volume. This proves the local startup and task
+path in CI; it is not a production deployment topology or availability claim.
