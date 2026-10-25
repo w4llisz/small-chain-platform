@@ -298,3 +298,20 @@ bounded failure path prints container state/logs, and the exit trap always
 removes the isolated project's containers and volume. This is startup and
 single-task evidence for the local demo topology, not a load, failover or
 production deployment result.
+
+## M4.4 provisioned local observability — 2026-10-25
+
+Local checks passed shell syntax, YAML parsing, dashboard JSON parsing and
+`git diff --check`. This runtime provides neither the Go toolchain nor Docker
+Compose: `make verify` stopped immediately because `gofmt` and `go` were not
+found, and `docker compose config` was skipped. Only CI can execute those checks
+and the new images; no local Go, Compose, Prometheus or Grafana pass is claimed.
+
+The extended Compose smoke test has a 60-second bound per endpoint or query. It
+requires Prometheus to report both application targets up, a successful durable
+state read and at least one completed worker attempt after a real submitted
+job. It then retrieves the immutable `small-chain-overview` dashboard through
+Grafana's anonymous Viewer API and checks its UID and title. This is wiring and
+provisioning evidence. The dashboard's count, mean and fixed-bucket panels are
+not a performance benchmark, percentile, availability result or production
+SLO.

@@ -445,7 +445,7 @@ unit tests.
 
 ## M4.3: health-ordered local Compose stack (implemented)
 
-The local stack has four services and one persistent volume. PostgreSQL must
+The foundational application stack has four services and one database volume. PostgreSQL must
 pass `pg_isready` before the one-shot migration container runs. The API and
 worker both require that migration to exit successfully, so an incompatible or
 failed schema never produces a superficially healthy application process.
@@ -464,3 +464,27 @@ endpoint, submits a checksum job and requires durable success plus API and
 worker metrics. Its exit trap prints service evidence on failure and always
 removes containers and the test volume. This proves the local startup and task
 path in CI; it is not a production deployment topology or availability claim.
+
+## M4.4: provisioned local observability (implemented)
+
+Prometheus starts only after the API and worker health checks pass, then scrapes
+their private Compose addresses every five seconds. Its host UI binds to
+loopback and its named volume retains at most 24 hours for repeatable local
+inspection. Grafana starts after Prometheus health, uses a provisioned data
+source with a stable UID and loads an immutable dashboard JSON from the
+repository. Dashboard state therefore does not depend on manual UI clicks.
+
+The dashboard keeps source and collection failure visible. Prometheus `up`
+shows whether each endpoint was scraped, while
+`small_chain_job_state_metrics_up` distinguishes a database-read failure from
+real zero-state gauges. Worker panels show the monotonic attempt count, the
+five-minute mean calculated from histogram sum/count, and the raw cumulative
+fixed-bucket rate. They do not calculate a percentile or apply an alert/SLO
+threshold because the repository does not yet contain a controlled workload
+measurement that could justify one.
+
+The Compose smoke test waits within a fixed budget for both UIs, then queries
+Prometheus for two live targets, a successful durable state read and at least
+one observed worker attempt. It fetches the provisioned dashboard by UID from
+Grafana's API. This verifies wiring and reproducibility; it does not establish
+monitoring availability, production retention or workload performance.

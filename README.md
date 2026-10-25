@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable state gauges, worker attempt histograms and a health-ordered Compose demo; distributed tracing and reproducible measurements remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable state gauges, worker attempt histograms and a health-ordered Compose demo with provisioned Prometheus and Grafana; distributed tracing and reproducible measurements remain planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -98,7 +98,8 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `web/` | React/TypeScript console, client/component tests and bounded Playwright operator workflow |
 | `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |
-| `compose.yaml` | Local PostgreSQL, one-shot migration, durable API and one worker with health-ordered startup |
+| `compose.yaml` | Health-ordered local PostgreSQL, migration, API, worker, Prometheus and Grafana stack |
+| `deploy/observability/` | Version-controlled Prometheus scrape config and provisioned Grafana dashboard |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
 | `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
@@ -125,14 +126,18 @@ With Docker and the Compose v2 plugin, start the durable backend demo:
 make compose-up
 curl http://127.0.0.1:8080/readyz
 curl http://127.0.0.1:9091/metrics
+# Grafana: http://127.0.0.1:3000/d/small-chain-overview
 make compose-down   # stop containers and preserve the PostgreSQL volume
-make compose-clean  # also delete the local demo volume
+make compose-clean  # also delete the local database and Prometheus volumes
 ```
 
 Compose waits for PostgreSQL health, runs migrations to successful completion,
-then starts the API and one worker. Only the API and worker metrics ports bind
-to host loopback; PostgreSQL remains on the private Compose network. The
-credentials in `compose.yaml` are limited to this local demonstration.
+then starts the API, one worker, Prometheus and Grafana in dependency order.
+The dashboard is loaded from version-controlled JSON and is available to an
+anonymous viewer because every published port is bound to host loopback.
+Prometheus is also available at `http://127.0.0.1:9090` and keeps 24 hours of
+local data. PostgreSQL remains on the private Compose network. The credentials
+in `compose.yaml` are limited to this local demonstration.
 
 For durable mode, follow the [PostgreSQL setup and test guide](docs/postgres.md). Apply migrations explicitly, then run the API and at least one worker:
 
@@ -196,7 +201,7 @@ repeating the write. Closing the view cannot undo a committed cancellation.
 - M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window. The API deletes up to 100 eligible terminal rows at startup and every minute by default; `-retention-interval=0` disables this maintenance.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
-- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. A worker started with `-metrics-addr` exposes a fixed-bucket `small_chain_worker_attempt_duration_seconds` histogram for trusted executor wall time only. It resets on worker restart and excludes claim, heartbeat and outcome persistence. OpenTelemetry traces and load-test results remain future work; no percentile, throughput or SLO claim has been measured.
+- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. A worker started with `-metrics-addr` exposes a fixed-bucket `small_chain_worker_attempt_duration_seconds` histogram for trusted executor wall time only. Compose scrapes both endpoints and provisions panels for target health, durable states, attempts, mean executor time and raw fixed buckets. The worker series resets on restart and excludes claim, heartbeat and outcome persistence. OpenTelemetry traces and load-test results remain future work; no percentile, throughput or SLO claim has been measured.
 - PostgreSQL records all low-frequency lifecycle transitions but deliberately omits heartbeat renewals. Its event endpoint is PostgreSQL-only; retained events are deleted with their job during bounded terminal cleanup.
 - PostgreSQL job listing is also unavailable in memory mode. List pages are stable against newer inserts but are not a multi-request snapshot; retention can remove older rows between pages.
 

@@ -23,27 +23,40 @@ one-second scrape budget. If it fails, alert on
 series as zero. The endpoint remains available so process-level evidence is not
 lost during a database incident.
 
-Metrics reset on restart; state gauges count retained records. M4 adds wait-time histograms, admission reasons and traces.
+Process-local metrics reset on restart; state gauges count retained records.
+Wait-time histograms, admission reasons and traces remain planned.
 
 ## Compose demo
 
 `make compose-up` builds the scratch image and waits up to one minute for the
-durable API and worker to become healthy. PostgreSQL is private to the Compose
-network; the API and worker metrics are available only on host loopback at
-ports 8080 and 9091. Inspect service state and logs with:
+durable API, worker, Prometheus and Grafana to become healthy. PostgreSQL is
+private to the Compose network. Every published HTTP port is restricted to host
+loopback: API 8080, worker metrics 9091, Prometheus 9090 and Grafana 3000.
+Inspect service state, scrape targets and the provisioned dashboard with:
 
 ```sh
 docker compose ps
-docker compose logs api worker migrate postgres
+docker compose logs api worker migrate postgres prometheus grafana
 curl http://127.0.0.1:8080/readyz
 curl http://127.0.0.1:9091/metrics
+curl 'http://127.0.0.1:9090/api/v1/query?query=small_chain_job_state_metrics_up'
+# Open http://127.0.0.1:3000/d/small-chain-overview
 ```
 
 Use `make compose-down` to stop the stack while preserving its named database
-volume. Use `make compose-clean` when you intentionally want to delete that
-local demo data. `make compose-smoke` creates a separate project, verifies
-migration, readiness, one real task and both metrics endpoints, then always
-deletes its containers and volume.
+and Prometheus volumes. Use `make compose-clean` when you intentionally want to
+delete both kinds of local demo data. Grafana state is recreated from the files
+under `deploy/observability`; anonymous Viewer access is enabled only for this
+loopback demo. The local admin password in `compose.yaml` is for temporary UI
+experimentation and edits disappear on restart.
+
+`make compose-smoke` creates a separate project, verifies migration, readiness,
+one real task, both raw metric endpoints, Prometheus samples and the dashboard
+UID through Grafana's API, then always deletes its containers and volumes. If a
+panel is empty, first inspect Prometheus **Status → Target health**, then query
+`up{job=~"small-chain-(api|worker)"}`. Treat
+`small_chain_job_state_metrics_up == 0` as a database collection failure. The
+dashboard intentionally contains no production alert threshold or percentile.
 
 ## Failure demos
 
@@ -122,6 +135,7 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 - **Job list returns 501:** start the API with `-storage=postgres`; the operations list intentionally represents durable shared state only.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Compose API or worker never starts:** inspect the one-shot `migrate` service first, then PostgreSQL health. Application services require a successful migration rather than retrying against an unknown schema.
+- **Prometheus or Grafana never becomes healthy:** inspect producer health first, then `docker compose logs prometheus grafana`. Prometheus depends on both metric endpoints; Grafana depends on Prometheus. Provisioned dashboard edits must be made in the repository JSON rather than the UI.
 - **Missing traces/percentiles:** planned, not present; the durable worker exports fixed histogram buckets but no measured percentile claim.
 
 ## CI
