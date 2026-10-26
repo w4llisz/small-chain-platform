@@ -1,23 +1,28 @@
 GO ?= go
+GOFMT ?= gofmt
 .DEFAULT_GOAL := run
 
 .PHONY: web-verify
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke
+.PHONY: run build load fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke
 run:
 	$(GO) run ./cmd/small-chain
 build:
 	mkdir -p bin
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain ./cmd/small-chain
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-worker ./cmd/small-chain-worker
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-load ./cmd/small-chain-load
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/migrate ./cmd/migrate
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/healthcheck ./cmd/healthcheck
+load:
+	$(GO) run ./cmd/small-chain-load
 fmt:
-	gofmt -w cmd internal
+	$(GOFMT) -w cmd internal
 check-fmt:
-	test -z "$$(gofmt -l cmd internal)"
+	@command -v $(GOFMT) >/dev/null || (echo "$(GOFMT) is required" >&2; exit 1)
+	test -z "$$($(GOFMT) -l cmd internal)"
 vet:
 	$(GO) vet ./...
 test:

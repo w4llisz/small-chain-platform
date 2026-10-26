@@ -58,6 +58,24 @@ panel is empty, first inspect Prometheus **Status → Target health**, then quer
 `small_chain_job_state_metrics_up == 0` as a database collection failure. The
 dashboard intentionally contains no production alert threshold or percentile.
 
+## Bounded load experiment
+
+Use `make load` for the default 100-request workload or pass explicit flags to
+the command when collecting evidence:
+
+```sh
+go run ./cmd/small-chain-load \
+  -requests=200 -concurrency=4 -key-prefix=m4-c4-run1 -delay-ms=25 \
+  > load-result.json
+```
+
+The generator has no retry loop and exits after the configured request count.
+Queue-full and record-capacity responses are valid measured outcomes; transport
+or server errors are recorded rather than hidden. A reused key prefix produces
+replays, so clean the Compose volumes or choose a new prefix before a fresh
+admission run. See [the measurement protocol](measurement.md) before treating
+any output as benchmark evidence.
+
 ## Failure demos
 
 | Scenario | Reproduction | Expected |

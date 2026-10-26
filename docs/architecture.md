@@ -488,3 +488,26 @@ Prometheus for two live targets, a successful durable state read and at least
 one observed worker attempt. It fetches the provisioned dashboard by UID from
 Grafana's API. This verifies wiring and reproducibility; it does not establish
 monitoring availability, production retention or workload performance.
+
+## M4.5a: bounded admission workload (implemented)
+
+The load generator is a separate client command and does not run inside the
+service image. One atomic counter distributes a fixed request count across a
+fixed number of goroutines. Each goroutine keeps local counts and latency
+buckets, so measurement aggregation adds no shared lock to the request path.
+The HTTP transport caps connections at the same concurrency and every request
+has a context deadline.
+
+Keys are deterministic and unique within a run. The generator never retries an
+HTTP or transport outcome: doing so would change offered load and hide
+ambiguous acceptance. Expected 429 queue pressure and 503 record capacity are
+report categories rather than command failures. A versioned JSON summary
+records workload controls, payload length/hash, outcome counts and raw fixed
+admission-latency buckets.
+
+The measured boundary ends after the bounded response body is closed. It does
+not include terminal completion, queue wait or worker execution. The tool does
+not calculate percentiles or service throughput, and the project still has no
+benchmark result. The next increment must combine this raw admission output
+with a documented host, clean-state policy, terminal convergence and
+Prometheus evidence.

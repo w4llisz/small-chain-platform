@@ -315,3 +315,25 @@ Grafana's anonymous Viewer API and checks its UID and title. This is wiring and
 provisioning evidence. The dashboard's count, mean and fixed-bucket panels are
 not a performance benchmark, percentile, availability result or production
 SLO.
+
+## M4.5a bounded load generator — 2026-10-26
+
+The deterministic HTTP suite drives ten requests through a three-request
+ceiling and requires the observed server concurrency to equal that ceiling.
+It verifies unique ordered idempotency keys, exact classification of 202, 200,
+429, record-capacity 503 and 500 responses, monotonic cumulative buckets and a
+versioned payload hash. A transport double fails every call and proves four
+configured requests produce four visible transport errors without retries.
+Table-driven validation covers URL scope and every request/task bound.
+
+Local Linux amd64 verification uses Go 1.27.2. The focused race test passed and
+the new `internal/loadgen` package reported 90.1% statement coverage. Full
+`make verify` passed vet, all race tests, five static command builds and the
+real-process smoke test. During that run, `check-fmt` exposed that a missing
+`gofmt` executable could previously print an error but still satisfy the empty
+output test; the target now fails explicitly and supports a `GOFMT` override.
+A functional command smoke sent 12 uniquely keyed requests at concurrency three
+to the real memory-mode API; all 12 were accepted, the outcome sum equaled the
+offered count and the `+Inf` bucket contained all observations. This only checks
+the report contract and is not retained as performance evidence. M4.5b remains
+the measured-report step.

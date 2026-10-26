@@ -94,7 +94,9 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `internal/postgres/` | Migrations, durable admission/listing, bounded retention, leases/outcomes/recovery and real-DB race tests |
 | `internal/maintenance/` | Cancellable PostgreSQL retention cadence, structured failure reporting and race-tested retry behavior |
 | `internal/dbworker/` | Bounded PostgreSQL poll/heartbeat/recovery loop with shutdown and fencing-loss tests |
+| `internal/loadgen/` | Bounded deterministic HTTP admission workload and versioned measurement output |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
+| `cmd/small-chain-load/` | CLI for finite, no-retry load experiments; see [measurement protocol](docs/measurement.md) |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `web/` | React/TypeScript console, client/component tests and bounded Playwright operator workflow |
 | `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |
@@ -138,6 +140,23 @@ anonymous viewer because every published port is bound to host loopback.
 Prometheus is also available at `http://127.0.0.1:9090` and keeps 24 hours of
 local data. PostgreSQL remains on the private Compose network. The credentials
 in `compose.yaml` are limited to this local demonstration.
+
+Run a finite admission experiment against the started stack:
+
+```sh
+go run ./cmd/small-chain-load \
+  -requests=200 \
+  -concurrency=4 \
+  -key-prefix=m4-c4-run1 \
+  -delay-ms=25 > load-result.json
+```
+
+The generator sends exactly 200 unique keys with at most four HTTP requests in
+flight and never retries. Its versioned JSON classifies acceptance, replay,
+overload, capacity, server and transport outcomes, and records fixed cumulative
+admission-latency buckets. It does not wait for job completion or calculate a
+percentile. Reuse a key prefix only when replay behavior is the workload under
+test; otherwise clean the demo volumes or choose a new prefix.
 
 For durable mode, follow the [PostgreSQL setup and test guide](docs/postgres.md). Apply migrations explicitly, then run the API and at least one worker:
 
@@ -201,7 +220,7 @@ repeating the write. Closing the view cannot undo a committed cancellation.
 - M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window. The API deletes up to 100 eligible terminal rows at startup and every minute by default; `-retention-interval=0` disables this maintenance.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
-- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. A worker started with `-metrics-addr` exposes a fixed-bucket `small_chain_worker_attempt_duration_seconds` histogram for trusted executor wall time only. Compose scrapes both endpoints and provisions panels for target health, durable states, attempts, mean executor time and raw fixed buckets. The worker series resets on restart and excludes claim, heartbeat and outcome persistence. OpenTelemetry traces and load-test results remain future work; no percentile, throughput or SLO claim has been measured.
+- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. A worker started with `-metrics-addr` exposes a fixed-bucket `small_chain_worker_attempt_duration_seconds` histogram for trusted executor wall time only. Compose scrapes both endpoints and provisions panels for target health, durable states, attempts, mean executor time and raw fixed buckets. A bounded generator now produces raw admission evidence, but no controlled benchmark report has been committed. The worker series resets on restart and excludes claim, heartbeat and outcome persistence. OpenTelemetry traces and load-test results remain future work; no percentile, throughput or SLO claim has been measured.
 - PostgreSQL records all low-frequency lifecycle transitions but deliberately omits heartbeat renewals. Its event endpoint is PostgreSQL-only; retained events are deleted with their job during bounded terminal cleanup.
 - PostgreSQL job listing is also unavailable in memory mode. List pages are stable against newer inserts but are not a multi-request snapshot; retention can remove older rows between pages.
 
