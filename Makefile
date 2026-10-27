@@ -6,7 +6,7 @@ GOFMT ?= gofmt
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build load fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke
+.PHONY: run build load fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke measure-compose
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -63,3 +63,6 @@ compose-clean:
 
 compose-smoke:
 	bash scripts/compose-smoke.sh
+
+measure-compose:
+	bash scripts/measure-compose.sh

@@ -337,3 +337,20 @@ to the real memory-mode API; all 12 were accepted, the outcome sum equaled the
 offered count and the `+Inf` bucket contained all observations. This only checks
 the report contract and is not retained as performance evidence. M4.5b remains
 the measured-report step.
+
+## M4.5b1 raw-evidence harness — 2026-10-27
+
+The collector statically passed Bash syntax, workflow YAML parsing and
+`git diff --check`. Local Go verification passed with Go 1.27.2: formatting,
+vet, race tests, five static command builds and the real-process smoke test.
+This runtime has no Docker daemon, so it did not execute the Compose matrix;
+the main-push measurement job is the first end-to-end collection authority.
+
+The harness itself requires nine complete 60-request reports, exact outcome
+accounting, all 540 durable jobs in `succeeded`, no active durable jobs and at
+least 540 observed worker attempts. It retains raw reports, Prometheus query
+responses, environment metadata, final container snapshots and hashes, while
+its bounded failure path captures logs before deleting isolated volumes. These
+checks prove evidence integrity and convergence for this synthetic workload.
+They do not establish portable throughput, a percentile, availability or an
+SLO. A measured report remains M4.5b2.

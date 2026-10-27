@@ -511,3 +511,21 @@ not calculate percentiles or service throughput, and the project still has no
 benchmark result. The next increment must combine this raw admission output
 with a documented host, clean-state policy, terminal convergence and
 Prometheus evidence.
+
+## M4.5b1: bounded raw-evidence collection (implemented)
+
+The measurement harness creates a unique Compose project, starts with fresh
+volumes and executes a fixed 1/4/16 admission-concurrency matrix. Each scenario
+has a distinct key namespace. The collector rejects partial admission reports,
+waits for the durable state gauges to show every accepted job succeeded and no
+active state remains, then verifies the worker histogram observed the expected
+attempt count. These are completion and integrity gates around the client-side
+measurement boundary.
+
+Raw scenario JSON, Prometheus API responses, toolchain/host context, final
+container state and hashes are retained together. Cleanup runs on success and
+failure, while failure paths preserve Compose state and logs for diagnosis.
+The CI job runs only after a main push and uploads the bundle as a short-lived
+artifact. Fixed execution order, a shared process/database and a final rather
+than peak resource snapshot are recorded limitations. Reviewing repeated
+bundles and committing a measured report remains the next increment.

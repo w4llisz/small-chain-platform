@@ -56,6 +56,29 @@ Use a new key prefix for every new-admission run. Reusing the prefix deliberatel
 measures idempotent replay and must be labeled as such. Preserve the raw JSON;
 do not copy only a favorable subset of its counts.
 
+## CI evidence bundle
+
+`make measure-compose` owns an isolated Compose project and new volumes, then
+runs three 60-request repetitions at concurrency 1, 4 and 16 in that fixed
+order. It requires every admission to be accepted, waits for all 540 jobs to
+reach `succeeded`, requires no queued/running/retrying jobs to remain, and
+checks that the worker histogram observed at least 540 attempts. Every wait is
+bounded. The exit trap always removes the project's containers and volumes.
+
+The command writes `artifacts/measurement/` with the nine raw generator
+reports, a hashed scenario index, commit/runner/toolchain context, raw
+Prometheus query responses, final Compose state, a final Docker resource
+snapshot and a SHA-256 manifest. On a `main` push, CI uploads this directory as
+`measurement-<commit>` for 14 days, including failure diagnostics when
+collection stops early. The output directory must be empty before collection,
+which prevents evidence from separate runs being mixed.
+
+This bundle is collection evidence, not a benchmark report. GitHub-hosted
+runners are shared, execution order is fixed without a warm-up, all scenarios
+reuse one process/database, and Docker stats is sampled only at the end. A
+reviewed report must preserve those limitations and show repeatability before
+deriving percentiles or thresholds.
+
 ## Required report context
 
 A committed result must include all of the following alongside raw output:
