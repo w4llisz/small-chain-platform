@@ -73,6 +73,15 @@ snapshot and a SHA-256 manifest. On a `main` push, CI uploads this directory as
 collection stops early. The output directory must be empty before collection,
 which prevents evidence from separate runs being mixed.
 
+Before a bundle is used in a report, run
+`go run ./cmd/small-chain-evidence -dir artifacts/measurement`. The verifier
+recomputes every manifest and scenario-index hash, rejects missing or extra JSON
+files, checks the declared workload matrix and admission accounting, and
+requires the Prometheus snapshots to show healthy targets, 540 successes, zero
+active jobs and the expected worker observations. It emits only a small
+validated context summary; it does not calculate latency percentiles or
+throughput. This makes report input reviewable without rerunning Docker.
+
 This bundle is collection evidence, not a benchmark report. GitHub-hosted
 runners are shared, execution order is fixed without a warm-up, all scenarios
 reuse one process/database, and Docker stats is sampled only at the end. A

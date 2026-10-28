@@ -354,3 +354,17 @@ its bounded failure path captures logs before deleting isolated volumes. These
 checks prove evidence integrity and convergence for this synthetic workload.
 They do not establish portable throughput, a percentile, availability or an
 SLO. A measured report remains M4.5b2.
+
+## M4.5b2a offline evidence verification — 2026-10-28
+
+The Go validator has deterministic fixtures for a complete evidence bundle and
+requires its provenance, scenario matrix, exact admission accounting,
+Prometheus convergence and non-empty runtime snapshots. Negative cases prove a
+changed scenario is rejected by SHA-256, rehashed queue rejection still fails
+the semantic checks, and active durable work fails convergence validation.
+
+Local Go 1.27.2 `make verify` covers formatting, vet, all race tests, six static
+commands and the real-process smoke test. Bash syntax, workflow YAML parsing
+and `git diff --check` also pass. No Docker daemon is available locally, so the
+real measurement artifact and its report remain CI-dependent and are not
+claimed here.

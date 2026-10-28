@@ -79,6 +79,7 @@ wait_for_url http://127.0.0.1:9090/-/ready
 wait_for_prometheus_minimum 'sum(up{job=~"small-chain-(api|worker)"})' 2
 
 CGO_ENABLED=0 go build -trimpath -o bin/small-chain-load ./cmd/small-chain-load
+CGO_ENABLED=0 go build -trimpath -o bin/small-chain-evidence ./cmd/small-chain-evidence
 
 python3 - "$output_dir/context.json" "$requests_per_run" "$repetitions" "${concurrencies[*]}" <<'PY'
 import datetime
@@ -260,5 +261,7 @@ for path in sorted(root.glob("*.json")):
     "files": entries,
 }, indent=2, sort_keys=True) + "\n")
 PY
+
+bin/small-chain-evidence -dir="$output_dir"
 
 echo "PASS: collected $expected_total terminal jobs across ${#concurrencies[@]} concurrency levels"

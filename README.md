@@ -97,6 +97,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `internal/loadgen/` | Bounded deterministic HTTP admission workload and versioned measurement output |
 | `cmd/migrate/` | Explicit schema migration command; see [PostgreSQL guide](docs/postgres.md) |
 | `cmd/small-chain-load/` | CLI for finite, no-retry load experiments; see [measurement protocol](docs/measurement.md) |
+| `cmd/small-chain-evidence/` | Offline integrity and convergence validator for retained measurement bundles |
 | `internal/httpapi/` | HTTP contract, structured logs, metrics and integration tests |
 | `web/` | React/TypeScript console, client/component tests and bounded Playwright operator workflow |
 | `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |

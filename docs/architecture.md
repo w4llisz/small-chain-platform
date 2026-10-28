@@ -529,3 +529,18 @@ The CI job runs only after a main push and uploads the bundle as a short-lived
 artifact. Fixed execution order, a shared process/database and a final rather
 than peak resource snapshot are recorded limitations. Reviewing repeated
 bundles and committing a measured report remains the next increment.
+
+## M4.5b2a: offline evidence verification (implemented)
+
+The Go evidence validator treats the uploaded artifact as untrusted report
+input. It recomputes the manifest and per-scenario SHA-256 digests, rejects
+duplicate, missing, extra or path-like JSON names, and binds every scenario to
+the matrix recorded in `context.json`. Admission counts must be conserved and
+fully accepted, with a complete `+Inf` bucket.
+
+Raw Prometheus snapshots must independently prove two healthy scrape targets,
+healthy durable-state collection, the exact succeeded count, zero active work,
+and worker count/bucket coverage. Compose and resource snapshots must also be
+present and non-empty. The command reports provenance and workload dimensions
+only; statistical aggregation and a reviewed measured report still require a
+real retained bundle.

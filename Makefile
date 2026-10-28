@@ -14,6 +14,7 @@ build:
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain ./cmd/small-chain
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-worker ./cmd/small-chain-worker
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-load ./cmd/small-chain-load
+	CGO_ENABLED=0 $(GO) build -trimpath -o bin/small-chain-evidence ./cmd/small-chain-evidence
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/migrate ./cmd/migrate
 	CGO_ENABLED=0 $(GO) build -trimpath -o bin/healthcheck ./cmd/healthcheck
 load:
