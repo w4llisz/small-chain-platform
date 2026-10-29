@@ -262,6 +262,9 @@ for path in sorted(root.glob("*.json")):
 }, indent=2, sort_keys=True) + "\n")
 PY
 
-bin/small-chain-evidence -dir="$output_dir"
+bin/small-chain-evidence \
+  -dir="$output_dir" \
+  -expected-commit="$(git rev-parse HEAD)" \
+  -require-clean=true
 
 echo "PASS: collected $expected_total terminal jobs across ${#concurrencies[@]} concurrency levels"

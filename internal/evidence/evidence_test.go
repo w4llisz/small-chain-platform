@@ -47,6 +47,31 @@ func TestValidateRejectsUncoveredJSON(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsWrongExpectedCommit(t *testing.T) {
+	dir := writeFixture(t)
+	_, err := ValidateWithPolicy(dir, Policy{ExpectedCommitSHA: strings.Repeat("b", 40)})
+	if err == nil || !strings.Contains(err.Error(), "expected") {
+		t.Fatalf("error = %v, want commit mismatch", err)
+	}
+}
+
+func TestValidateRejectsDirtyTreeWhenRequired(t *testing.T) {
+	dir := writeFixture(t)
+	path := filepath.Join(dir, "context.json")
+	var context map[string]any
+	readTestJSON(t, path, &context)
+	context["source"].(map[string]any)["tracked_tree_dirty"] = true
+	writeTestJSON(t, path, context)
+	writeManifest(t, dir)
+	_, err := ValidateWithPolicy(dir, Policy{
+		ExpectedCommitSHA: strings.Repeat("a", 40),
+		RequireCleanTree:  true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "dirty tracked tree") {
+		t.Fatalf("error = %v, want dirty-tree rejection", err)
+	}
+}
+
 func TestValidateRejectsRejectedAdmissionEvenWithValidHashes(t *testing.T) {
 	dir := writeFixture(t)
 	path := filepath.Join(dir, "scenario-c1-r1.json")
@@ -80,9 +105,11 @@ func writeFixture(t *testing.T) string {
 	dir := t.TempDir()
 	writeTestJSON(t, filepath.Join(dir, "context.json"), map[string]any{
 		"schema_version": 1,
-		"source":         map[string]any{"commit_sha": strings.Repeat("a", 40)},
-		"stack":          map[string]any{"worker_concurrency": 4},
-		"matrix":         map[string]any{"requests_per_run": 3, "repetitions": 2, "concurrency": []int{1, 4}},
+		"source": map[string]any{
+			"commit_sha": strings.Repeat("a", 40), "tracked_tree_dirty": false,
+		},
+		"stack":  map[string]any{"worker_concurrency": 4},
+		"matrix": map[string]any{"requests_per_run": 3, "repetitions": 2, "concurrency": []int{1, 4}},
 	})
 
 	entries := make([]map[string]any, 0, 4)

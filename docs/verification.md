@@ -368,3 +368,17 @@ commands and the real-process smoke test. Bash syntax, workflow YAML parsing
 and `git diff --check` also pass. No Docker daemon is available locally, so the
 real measurement artifact and its report remain CI-dependent and are not
 claimed here.
+
+## M4.5b2b commit-bound provenance — 2026-10-29
+
+The evidence command now requires `-expected-commit` and defaults to rejecting
+artifacts whose hashed context records tracked-tree changes. The Compose
+collector supplies its own full HEAD and explicitly requires a clean tree.
+Race-tested negative cases use otherwise valid, fully rehashed fixtures to
+prove a different expected commit and a dirty tree are rejected.
+
+Local Go 1.27.2 `make verify` passes formatting, vet, all race tests, six static
+command builds and the real-process smoke test. Bash syntax and
+`git diff --check` also pass. The environment still has no Docker daemon, and
+GitHub Actions did not start for the two preceding connector-authored commits;
+no Compose measurement or artifact result is claimed.

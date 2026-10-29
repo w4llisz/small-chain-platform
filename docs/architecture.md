@@ -544,3 +544,16 @@ and worker count/bucket coverage. Compose and resource snapshots must also be
 present and non-empty. The command reports provenance and workload dimensions
 only; statistical aggregation and a reviewed measured report still require a
 real retained bundle.
+
+## M4.5b2b: provenance policy (implemented)
+
+Artifact integrity does not prove that the artifact belongs to the revision a
+reviewer intends to discuss. Report consumers must now provide an expected full
+commit SHA, which is compared with the hashed `context.json`; clean-tree policy
+is enabled by default. The collector invokes the validator with its own checked
+out HEAD and requires no tracked changes. Tests prove a fully self-consistent
+bundle from another commit and a rehashed dirty-tree bundle are both rejected.
+
+This binds evidence to source identity without claiming that the shared runner
+is representative. A real green bundle and reviewed aggregation remain
+required before publishing measurements.

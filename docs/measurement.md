@@ -73,8 +73,16 @@ snapshot and a SHA-256 manifest. On a `main` push, CI uploads this directory as
 collection stops early. The output directory must be empty before collection,
 which prevents evidence from separate runs being mixed.
 
-Before a bundle is used in a report, run
-`go run ./cmd/small-chain-evidence -dir artifacts/measurement`. The verifier
+Before a bundle is used in a report, run:
+
+```sh
+go run ./cmd/small-chain-evidence \
+  -dir artifacts/measurement \
+  -expected-commit="$(git rev-parse HEAD)"
+```
+
+The verifier requires the bundle to name that exact commit and, by default,
+rejects a dirty tracked tree. It
 recomputes every manifest and scenario-index hash, rejects missing or extra JSON
 files, checks the declared workload matrix and admission accounting, and
 requires the Prometheus snapshots to show healthy targets, 540 successes, zero

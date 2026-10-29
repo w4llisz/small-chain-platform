@@ -32,10 +32,19 @@ type Summary struct {
 	Concurrencies       []int  `json:"admission_concurrencies"`
 }
 
+// Policy binds a bundle to the source revision expected by its consumer.
+// RequireCleanTree prevents measurements from uncommitted tracked changes from
+// being presented as evidence for that revision.
+type Policy struct {
+	ExpectedCommitSHA string
+	RequireCleanTree  bool
+}
+
 type contextFile struct {
 	SchemaVersion int `json:"schema_version"`
 	Source        struct {
-		CommitSHA string `json:"commit_sha"`
+		CommitSHA        string `json:"commit_sha"`
+		TrackedTreeDirty bool   `json:"tracked_tree_dirty"`
 	} `json:"source"`
 	Stack struct {
 		WorkerConcurrency int `json:"worker_concurrency"`
@@ -77,9 +86,15 @@ type prometheusResponse struct {
 	} `json:"data"`
 }
 
-// Validate verifies all JSON files covered by the manifest, the scenario
-// matrix and the Prometheus completion snapshots.
+// Validate verifies a bundle without applying caller-specific provenance
+// policy. Report tooling should use ValidateWithPolicy.
 func Validate(dir string) (Summary, error) {
+	return ValidateWithPolicy(dir, Policy{})
+}
+
+// ValidateWithPolicy verifies all JSON files covered by the manifest, the
+// scenario matrix, Prometheus completion snapshots and caller provenance.
+func ValidateWithPolicy(dir string, policy Policy) (Summary, error) {
 	var manifest manifestFile
 	if err := readJSON(filepath.Join(dir, "manifest.json"), &manifest); err != nil {
 		return Summary{}, err
@@ -98,6 +113,12 @@ func Validate(dir string) (Summary, error) {
 	}
 	if context.SchemaVersion != schemaVersion || context.Source.CommitSHA == "" {
 		return Summary{}, errors.New("context has invalid schema or empty commit SHA")
+	}
+	if policy.ExpectedCommitSHA != "" && context.Source.CommitSHA != policy.ExpectedCommitSHA {
+		return Summary{}, fmt.Errorf("context commit %q, expected %q", context.Source.CommitSHA, policy.ExpectedCommitSHA)
+	}
+	if policy.RequireCleanTree && context.Source.TrackedTreeDirty {
+		return Summary{}, errors.New("context records a dirty tracked tree")
 	}
 	if context.Matrix.RequestsPerRun < 1 || context.Matrix.Repetitions < 1 || len(context.Matrix.Concurrency) == 0 {
 		return Summary{}, errors.New("context has an empty workload matrix")
