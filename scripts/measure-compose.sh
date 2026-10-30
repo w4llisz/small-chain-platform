@@ -266,5 +266,10 @@ bin/small-chain-evidence \
   -dir="$output_dir" \
   -expected-commit="$(git rev-parse HEAD)" \
   -require-clean=true
+bin/small-chain-evidence \
+  -dir="$output_dir" \
+  -expected-commit="$(git rev-parse HEAD)" \
+  -require-clean=true \
+  -format=markdown >"$output_dir/report.md"
 
 echo "PASS: collected $expected_total terminal jobs across ${#concurrencies[@]} concurrency levels"

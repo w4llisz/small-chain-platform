@@ -90,7 +90,25 @@ active jobs and the expected worker observations. It emits only a small
 validated context summary; it does not calculate latency percentiles or
 throughput. This makes report input reviewable without rerunning Docker.
 
-This bundle is collection evidence, not a benchmark report. GitHub-hosted
+After validation, the same command can render a deterministic Markdown view:
+
+```sh
+go run ./cmd/small-chain-evidence \
+  -dir artifacts/measurement \
+  -expected-commit="$(git rev-parse HEAD)" \
+  -format=markdown > artifacts/measurement/report.md
+```
+
+The collector creates this derived file automatically. It contains recorded
+runner/toolchain context, the exact workload, one row per scenario, and the
+terminal Prometheus snapshots. Scenario task controls must match the context;
+mixed workloads are rejected even when their hashes are internally valid. The
+renderer sorts scenario rows and rounds copied millisecond values to three
+decimal places. It does not calculate a percentile, request rate, scaling
+ratio, alert threshold or SLO. The hashed raw JSON remains the authority.
+
+This bundle and its generated view are collection evidence, not a reviewed
+benchmark report. GitHub-hosted
 runners are shared, execution order is fixed without a warm-up, all scenarios
 reuse one process/database, and Docker stats is sampled only at the end. A
 reviewed report must preserve those limitations and show repeatability before

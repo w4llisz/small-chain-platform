@@ -100,16 +100,49 @@ func TestValidateRejectsIncompleteConvergence(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsScenarioControlsOutsideContext(t *testing.T) {
+	dir := writeFixture(t)
+	path := filepath.Join(dir, "scenario-c1-r1.json")
+	var report loadgen.Summary
+	readTestJSON(t, path, &report)
+	report.Workload.DelayMS++
+	writeTestJSON(t, path, report)
+	rewriteScenarioHash(t, dir, "scenario-c1-r1.json")
+	writeManifest(t, dir)
+	if _, err := Validate(dir); err == nil || !strings.Contains(err.Error(), "task controls") {
+		t.Fatalf("error = %v, want task-control mismatch", err)
+	}
+}
+
 func writeFixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	writeTestJSON(t, filepath.Join(dir, "context.json"), map[string]any{
 		"schema_version": 1,
+		"captured_at":    "2026-10-30T10:00:00Z",
 		"source": map[string]any{
 			"commit_sha": strings.Repeat("a", 40), "tracked_tree_dirty": false,
 		},
-		"stack":  map[string]any{"worker_concurrency": 4},
-		"matrix": map[string]any{"requests_per_run": 3, "repetitions": 2, "concurrency": []int{1, 4}},
+		"runner": map[string]any{
+			"github_actions": true, "runner_os": "Linux", "runner_arch": "X64", "shared_or_virtualized": true,
+		},
+		"host": map[string]any{
+			"platform": "Linux-test", "machine": "x86_64", "cpu_count": 2,
+			"cpu_model": "Fixture CPU", "memory_total_kib": 4096,
+		},
+		"toolchain": map[string]any{
+			"go": "go version go1.27.1 linux/amd64", "docker_server": "29.0.0", "docker_compose": "2.40.0",
+		},
+		"stack": map[string]any{
+			"database": "postgres:16", "worker_processes": 1, "worker_concurrency": 4,
+			"volume_policy": "fresh fixture",
+		},
+		"matrix": map[string]any{
+			"requests_per_run": 3, "repetitions": 2, "concurrency": []int{1, 4},
+			"delay_ms": 25, "fail_first_attempts": 0, "max_attempts": 3,
+			"timeout_ms": 1000, "request_timeout": "10s",
+		},
+		"limitations": []string{"Synthetic fixture; not a benchmark.", "Shared runner."},
 	})
 
 	entries := make([]map[string]any, 0, 4)
@@ -117,10 +150,21 @@ func writeFixture(t *testing.T) string {
 		for repetition := 1; repetition <= 2; repetition++ {
 			name := fmt.Sprintf("scenario-c%d-r%d.json", concurrency, repetition)
 			report := loadgen.Summary{SchemaVersion: 1}
+			report.Target = "http://127.0.0.1:8080/v1/jobs"
 			report.Workload.Requests = 3
 			report.Workload.Concurrency = concurrency
+			report.Workload.RequestTimeoutMS = 10_000
+			report.Workload.PayloadBytes = 7
+			report.Workload.PayloadSHA256 = strings.Repeat("b", 64)
+			report.Workload.DelayMS = 25
+			report.Workload.MaxAttempts = 3
+			report.Workload.TimeoutMS = 1000
 			report.Counts.Offered = 3
 			report.Counts.Accepted = 3
+			report.DurationMS = float64(concurrency*10 + repetition)
+			report.Latency.MinMS = 1
+			report.Latency.MeanMS = 2
+			report.Latency.MaxMS = 3
 			report.Latency.Buckets = []loadgen.Bucket{{LEMS: "1", Count: 2}, {LEMS: "+Inf", Count: 3}}
 			writeTestJSON(t, filepath.Join(dir, name), report)
 			entries = append(entries, map[string]any{

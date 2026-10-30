@@ -382,3 +382,19 @@ command builds and the real-process smoke test. Bash syntax and
 `git diff --check` also pass. The environment still has no Docker daemon, and
 GitHub Actions did not start for the two preceding connector-authored commits;
 no Compose measurement or artifact result is claimed.
+
+## M4.5b2c deterministic evidence report — 2026-10-30
+
+The evidence command now has a Markdown output mode that runs only after bundle
+integrity, source provenance, workload accounting and terminal convergence all
+pass. It rechecks covered file digests while reading report inputs, sorts rows
+by concurrency and repetition, and copies only recorded context, per-run
+admission observations and terminal worker snapshots. A new negative case
+proves a rehashed scenario with task controls outside the declared matrix is
+rejected. Synthetic fixtures prove repeated rendering is byte-for-byte stable.
+
+The generated document explicitly avoids percentiles, request-rate division,
+scaling claims, thresholds and SLOs. It is a deterministic review view, not a
+real measurement result. The local `make verify` result and current CI state
+for this revision are recorded in the corresponding commit report rather than
+predeclared here.

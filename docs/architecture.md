@@ -557,3 +557,19 @@ bundle from another commit and a rehashed dirty-tree bundle are both rejected.
 This binds evidence to source identity without claiming that the shared runner
 is representative. A real green bundle and reviewed aggregation remain
 required before publishing measurements.
+
+## M4.5b2c: deterministic evidence report (implemented)
+
+The evidence command can render Markdown only after the same manifest,
+scenario, provenance and convergence checks succeed. The renderer re-reads
+covered inputs against their expected digests, orders scenarios by concurrency
+and repetition, and reports recorded runner/toolchain context, workload inputs,
+per-run admission min/mean/max and terminal Prometheus snapshots. Scenario task
+controls must agree with the context, preventing a self-consistent bundle from
+quietly combining different workloads.
+
+The renderer deliberately performs no percentile interpolation, duration-based
+request-rate calculation, worker-scaling comparison or SLO selection. Its
+output is a deterministic review aid derived from raw JSON, not a replacement
+for that evidence. Publishing a real measured report still requires a retained
+green bundle from the source revision and review of the recorded limitations.

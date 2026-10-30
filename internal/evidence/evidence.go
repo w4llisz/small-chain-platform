@@ -4,6 +4,7 @@
 package evidence
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/w4llisz/small-chain-platform/internal/loadgen"
 )
@@ -41,19 +43,50 @@ type Policy struct {
 }
 
 type contextFile struct {
-	SchemaVersion int `json:"schema_version"`
+	SchemaVersion int    `json:"schema_version"`
+	CapturedAt    string `json:"captured_at"`
 	Source        struct {
 		CommitSHA        string `json:"commit_sha"`
 		TrackedTreeDirty bool   `json:"tracked_tree_dirty"`
 	} `json:"source"`
 	Stack struct {
-		WorkerConcurrency int `json:"worker_concurrency"`
+		Database          string `json:"database"`
+		WorkerProcesses   int    `json:"worker_processes"`
+		WorkerConcurrency int    `json:"worker_concurrency"`
+		VolumePolicy      string `json:"volume_policy"`
 	} `json:"stack"`
 	Matrix struct {
-		RequestsPerRun int   `json:"requests_per_run"`
-		Repetitions    int   `json:"repetitions"`
-		Concurrency    []int `json:"concurrency"`
+		RequestsPerRun    int    `json:"requests_per_run"`
+		Repetitions       int    `json:"repetitions"`
+		Concurrency       []int  `json:"concurrency"`
+		DelayMS           int    `json:"delay_ms"`
+		FailFirstAttempts int    `json:"fail_first_attempts"`
+		MaxAttempts       int    `json:"max_attempts"`
+		TimeoutMS         int    `json:"timeout_ms"`
+		RequestTimeout    string `json:"request_timeout"`
 	} `json:"matrix"`
+	Runner struct {
+		GitHubActions       bool   `json:"github_actions"`
+		RunID               string `json:"run_id"`
+		RunAttempt          string `json:"run_attempt"`
+		RunnerName          string `json:"runner_name"`
+		RunnerOS            string `json:"runner_os"`
+		RunnerArch          string `json:"runner_arch"`
+		SharedOrVirtualized bool   `json:"shared_or_virtualized"`
+	} `json:"runner"`
+	Host struct {
+		Platform       string `json:"platform"`
+		Machine        string `json:"machine"`
+		CPUCount       int    `json:"cpu_count"`
+		CPUModel       string `json:"cpu_model"`
+		MemoryTotalKiB int64  `json:"memory_total_kib"`
+	} `json:"host"`
+	Toolchain struct {
+		Go            string `json:"go"`
+		DockerServer  string `json:"docker_server"`
+		DockerCompose string `json:"docker_compose"`
+	} `json:"toolchain"`
+	Limitations []string `json:"limitations"`
 }
 
 type manifestFile struct {
@@ -215,6 +248,12 @@ func validateScenarios(dir string, context contextFile, index scenarioIndex, man
 		return fmt.Errorf("scenario count %d, want %d", len(index.Scenarios), len(expected))
 	}
 	seen := make(map[string]struct{}, len(index.Scenarios))
+	requestTimeout, err := time.ParseDuration(context.Matrix.RequestTimeout)
+	if err != nil || requestTimeout <= 0 {
+		return errors.New("context has invalid request timeout")
+	}
+	var baselineTarget, baselinePayloadSHA string
+	var baselinePayloadBytes int
 	for _, scenario := range index.Scenarios {
 		if _, ok := expected[scenario.File]; !ok {
 			return fmt.Errorf("unexpected scenario %q", scenario.File)
@@ -235,6 +274,23 @@ func validateScenarios(dir string, context contextFile, index scenarioIndex, man
 		}
 		if report.SchemaVersion != schemaVersion || report.Workload.Concurrency != scenario.Concurrency || report.Workload.Requests != context.Matrix.RequestsPerRun {
 			return fmt.Errorf("scenario %q workload does not match index/context", scenario.File)
+		}
+		if report.Workload.RequestTimeoutMS != requestTimeout.Milliseconds() ||
+			report.Workload.DelayMS != context.Matrix.DelayMS ||
+			report.Workload.FailFirstAttempts != context.Matrix.FailFirstAttempts ||
+			report.Workload.MaxAttempts != context.Matrix.MaxAttempts ||
+			report.Workload.TimeoutMS != context.Matrix.TimeoutMS {
+			return fmt.Errorf("scenario %q task controls do not match context", scenario.File)
+		}
+		if baselineTarget == "" {
+			if report.Target == "" || len(report.Workload.PayloadSHA256) != sha256.Size*2 {
+				return fmt.Errorf("scenario %q has incomplete target or payload identity", scenario.File)
+			}
+			baselineTarget = report.Target
+			baselinePayloadSHA = report.Workload.PayloadSHA256
+			baselinePayloadBytes = report.Workload.PayloadBytes
+		} else if report.Target != baselineTarget || report.Workload.PayloadSHA256 != baselinePayloadSHA || report.Workload.PayloadBytes != baselinePayloadBytes {
+			return fmt.Errorf("scenario %q target or payload differs from the matrix", scenario.File)
 		}
 		counts := report.Counts
 		outcomes := counts.Accepted + counts.Replayed + counts.QueueFull + counts.RecordCapacity + counts.Draining + counts.OtherClientError + counts.ServerError + counts.OtherStatus + counts.TransportError
@@ -359,10 +415,19 @@ func validateJSONArray(dir, name string, manifest map[string]string) error {
 }
 
 func readCoveredJSON(dir, name string, manifest map[string]string, target any) error {
-	if _, ok := manifest[name]; !ok {
+	expected, ok := manifest[name]
+	if !ok {
 		return fmt.Errorf("required file %q is not covered by manifest", name)
 	}
-	return readJSON(filepath.Join(dir, name), target)
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return fmt.Errorf("open %s: %w", name, err)
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != expected {
+		return fmt.Errorf("manifest mismatch for %q", name)
+	}
+	return decodeJSON(name, data, target)
 }
 
 func readJSON(path string, target any) error {
@@ -377,6 +442,17 @@ func readJSON(path string, target any) error {
 	}
 	if decoder.Decode(&struct{}{}) != io.EOF {
 		return fmt.Errorf("decode %s: trailing data", filepath.Base(path))
+	}
+	return nil
+}
+
+func decodeJSON(name string, data []byte, target any) error {
+	decoder := json.NewDecoder(io.LimitReader(bytes.NewReader(data), 8<<20))
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("decode %s: %w", name, err)
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return fmt.Errorf("decode %s: trailing data", name)
 	}
 	return nil
 }
