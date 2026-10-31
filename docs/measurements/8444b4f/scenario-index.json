@@ -1,0 +1,59 @@
+{
+  "scenarios": [
+    {
+      "concurrency": 1,
+      "file": "scenario-c1-r1.json",
+      "repetition": 1,
+      "sha256": "96960f29532a1561bad4d30f2c99c23a4770cf3a1400d922031aea51ab36106f"
+    },
+    {
+      "concurrency": 1,
+      "file": "scenario-c1-r2.json",
+      "repetition": 2,
+      "sha256": "9e778e2ba633498cbddba84d178d4ea377b4c60579425aa8ba51250c0009c299"
+    },
+    {
+      "concurrency": 1,
+      "file": "scenario-c1-r3.json",
+      "repetition": 3,
+      "sha256": "16ccedc6059723fbe9f665df59a2a6ce75927a4294bfee6aaf3dac23711488e5"
+    },
+    {
+      "concurrency": 4,
+      "file": "scenario-c4-r1.json",
+      "repetition": 1,
+      "sha256": "15d6a88a36e41cb6f57c21164e8fdb0fa285cf460a09fc7b2b6dd26335d6b211"
+    },
+    {
+      "concurrency": 4,
+      "file": "scenario-c4-r2.json",
+      "repetition": 2,
+      "sha256": "4295dcb9378d6176ff51376fb695990e6bb337bb94c962e734ed9baf411361fb"
+    },
+    {
+      "concurrency": 4,
+      "file": "scenario-c4-r3.json",
+      "repetition": 3,
+      "sha256": "566d4fec748b5ab068afe472db970e4cc94ed1a5586fbe2d4adfedf0612331e7"
+    },
+    {
+      "concurrency": 16,
+      "file": "scenario-c16-r1.json",
+      "repetition": 1,
+      "sha256": "ea3a0979f6c5e9329c42d4c2254ee8ea402c12c9810c3b35d37a101e9af8ccd7"
+    },
+    {
+      "concurrency": 16,
+      "file": "scenario-c16-r2.json",
+      "repetition": 2,
+      "sha256": "2dd72b6403525a1bb6fc82f639fbf5a53fd5173a94f3759e632e93841fd3a213"
+    },
+    {
+      "concurrency": 16,
+      "file": "scenario-c16-r3.json",
+      "repetition": 3,
+      "sha256": "4ee55bfa6f839b9fe853e791e6bde3492dc2cc384e95b93d233edf2079a56b85"
+    }
+  ],
+  "schema_version": 1
+}

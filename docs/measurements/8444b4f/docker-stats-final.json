@@ -1,0 +1,57 @@
+[
+  {
+    "BlockIO": "0B / 0B",
+    "CPUPerc": "3.25%",
+    "Container": "2abd0c2a074c130194cd23a28e3561e56b47a3b1b3c24eb9c10f547d11b5bbc4",
+    "ID": "2abd0c2a074c",
+    "MemPerc": "0.05%",
+    "MemUsage": "7.637MiB / 15.61GiB",
+    "Name": "small-chain-measure-41043908030-1-api-1",
+    "NetIO": "604kB / 889kB",
+    "PIDs": "9"
+  },
+  {
+    "BlockIO": "1.47MB / 551MB",
+    "CPUPerc": "3.52%",
+    "Container": "ed18f224d98d181119f1f643c8d3d6dfa953645580cd5035ce53976438df1dd3",
+    "ID": "ed18f224d98d",
+    "MemPerc": "1.71%",
+    "MemUsage": "273.2MiB / 15.61GiB",
+    "Name": "small-chain-measure-41043908030-1-grafana-1",
+    "NetIO": "173MB / 528kB",
+    "PIDs": "124"
+  },
+  {
+    "BlockIO": "0B / 64.8MB",
+    "CPUPerc": "0.34%",
+    "Container": "24ba0d79683ac774d65863e374964648cf212f9af7c5cf992031b27ac18d71b8",
+    "ID": "24ba0d79683a",
+    "MemPerc": "0.32%",
+    "MemUsage": "50.84MiB / 15.61GiB",
+    "Name": "small-chain-measure-41043908030-1-postgres-1",
+    "NetIO": "1.07MB / 851kB",
+    "PIDs": "14"
+  },
+  {
+    "BlockIO": "0B / 41kB",
+    "CPUPerc": "7.27%",
+    "Container": "8f585eb32a1e6fb5a6d8bdc6f8ec5835f6badfac0d9ae379375049e328a2f102",
+    "ID": "8f585eb32a1e",
+    "MemPerc": "0.18%",
+    "MemUsage": "29.18MiB / 15.61GiB",
+    "Name": "small-chain-measure-41043908030-1-prometheus-1",
+    "NetIO": "37.7kB / 26.5kB",
+    "PIDs": "9"
+  },
+  {
+    "BlockIO": "102kB / 0B",
+    "CPUPerc": "4.01%",
+    "Container": "0d0c6e703a991e0cd0a3ab3128b45d80abd440979e0fbb3d020802872288a3b1",
+    "ID": "0d0c6e703a99",
+    "MemPerc": "0.05%",
+    "MemUsage": "7.863MiB / 15.61GiB",
+    "Name": "small-chain-measure-41043908030-1-worker-1",
+    "NetIO": "486kB / 520kB",
+    "PIDs": "9"
+  }
+]

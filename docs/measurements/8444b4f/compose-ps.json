@@ -1,0 +1,181 @@
+[
+  {
+    "Command": "\"/small-chain -addr=\u2026\"",
+    "CreatedAt": "2026-10-30 10:53:21 +0000 UTC",
+    "ExitCode": 0,
+    "Health": "healthy",
+    "ID": "2abd0c2a074c",
+    "Image": "small-chain-platform:local",
+    "Labels": "com.docker.compose.config-hash=59c8821938879d5f87542faa99ecfbde970551acc9a96ed2f5126aa45517f51c,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/home/runner/work/small-chain-platform/small-chain-platform/compose.yaml,com.docker.compose.project.working_dir=/home/runner/work/small-chain-platform/small-chain-platform,com.docker.compose.version=2.38.2,com.docker.compose.depends_on=postgres:service_healthy:false,migrate:service_completed_successfully:false,com.docker.compose.project=small-chain-measure-41043908030-1,com.docker.compose.service=api",
+    "LocalVolumes": "0",
+    "Mounts": "",
+    "Name": "small-chain-measure-41043908030-1-api-1",
+    "Names": "small-chain-measure-41043908030-1-api-1",
+    "Networks": "small-chain-measure-41043908030-1_default",
+    "Ports": "127.0.0.1:8080->8080/tcp, 9091/tcp",
+    "Project": "small-chain-measure-41043908030-1",
+    "Publishers": [
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 8080,
+        "TargetPort": 8080,
+        "URL": "127.0.0.1"
+      },
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 0,
+        "TargetPort": 9091,
+        "URL": ""
+      }
+    ],
+    "RunningFor": "57 seconds ago",
+    "Service": "api",
+    "Size": "0B",
+    "State": "running",
+    "Status": "Up 50 seconds (healthy)"
+  },
+  {
+    "Command": "\"/run.sh\"",
+    "CreatedAt": "2026-10-30 10:53:21 +0000 UTC",
+    "ExitCode": 0,
+    "Health": "healthy",
+    "ID": "ed18f224d98d",
+    "Image": "grafana/grafana:13.2.4",
+    "Labels": "com.docker.compose.image=sha256:45900b2eda7da0cbda80b9025e446147d9085fee71675ba86a48a1cad34e4c8a,com.docker.compose.project=small-chain-measure-41043908030-1,com.docker.compose.project.working_dir=/home/runner/work/small-chain-platform/small-chain-platform,com.docker.compose.service=grafana,com.docker.compose.version=2.38.2,org.opencontainers.image.source=https://github.com/grafana/grafana,com.docker.compose.config-hash=110f0f9eeef4f343e9318ba4b9b4396c1833e6f321884300a7bca55b0d4ecbb2,com.docker.compose.container-number=1,com.docker.compose.depends_on=prometheus:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/home/runner/work/small-chain-platform/small-chain-platform/compose.yaml,maintainer=Grafana Labs <hello@grafana.com>",
+    "LocalVolumes": "0",
+    "Mounts": "/home/runner/w\u2026,/home/runner/w\u2026",
+    "Name": "small-chain-measure-41043908030-1-grafana-1",
+    "Names": "small-chain-measure-41043908030-1-grafana-1",
+    "Networks": "small-chain-measure-41043908030-1_default",
+    "Ports": "127.0.0.1:3000->3000/tcp",
+    "Project": "small-chain-measure-41043908030-1",
+    "Publishers": [
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 3000,
+        "TargetPort": 3000,
+        "URL": "127.0.0.1"
+      }
+    ],
+    "RunningFor": "57 seconds ago",
+    "Service": "grafana",
+    "Size": "0B",
+    "State": "running",
+    "Status": "Up 39 seconds (healthy)"
+  },
+  {
+    "Command": "\"/migrate\"",
+    "CreatedAt": "2026-10-30 10:53:21 +0000 UTC",
+    "ExitCode": 0,
+    "Health": "",
+    "ID": "c50dd58cbcf1",
+    "Image": "small-chain-platform:local",
+    "Labels": "com.docker.compose.config-hash=ee09851d4495ece7a921380c844c97b01a29f2f7433feddca5c3348fc3d0f5e8,com.docker.compose.depends_on=postgres:service_healthy:false,com.docker.compose.project.config_files=/home/runner/work/small-chain-platform/small-chain-platform/compose.yaml,com.docker.compose.project.working_dir=/home/runner/work/small-chain-platform/small-chain-platform,com.docker.compose.container-number=1,com.docker.compose.oneoff=False,com.docker.compose.project=small-chain-measure-41043908030-1,com.docker.compose.service=migrate,com.docker.compose.version=2.38.2",
+    "LocalVolumes": "0",
+    "Mounts": "",
+    "Name": "small-chain-measure-41043908030-1-migrate-1",
+    "Names": "small-chain-measure-41043908030-1-migrate-1",
+    "Networks": "small-chain-measure-41043908030-1_default",
+    "Ports": "",
+    "Project": "small-chain-measure-41043908030-1",
+    "Publishers": [],
+    "RunningFor": "57 seconds ago",
+    "Service": "migrate",
+    "Size": "0B",
+    "State": "exited",
+    "Status": "Exited (0) 51 seconds ago"
+  },
+  {
+    "Command": "\"docker-entrypoint.s\u2026\"",
+    "CreatedAt": "2026-10-30 10:53:21 +0000 UTC",
+    "ExitCode": 0,
+    "Health": "healthy",
+    "ID": "24ba0d79683a",
+    "Image": "postgres:16",
+    "Labels": "com.docker.compose.config-hash=81cc1cc58fb8353f863b383e7f6dd002dd947709248d29ef325e2dcd06be1247,com.docker.compose.image=sha256:74d436cb49d3398cf7b5d7b33635d43623d9e4da4b93c22db453f7d5d81181b1,com.docker.compose.project=small-chain-measure-41043908030-1,com.docker.compose.service=postgres,com.docker.compose.version=2.38.2,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/home/runner/work/small-chain-platform/small-chain-platform/compose.yaml,com.docker.compose.project.working_dir=/home/runner/work/small-chain-platform/small-chain-platform",
+    "LocalVolumes": "1",
+    "Mounts": "small-chain-me\u2026",
+    "Name": "small-chain-measure-41043908030-1-postgres-1",
+    "Names": "small-chain-measure-41043908030-1-postgres-1",
+    "Networks": "small-chain-measure-41043908030-1_default",
+    "Ports": "5432/tcp",
+    "Project": "small-chain-measure-41043908030-1",
+    "Publishers": [
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 0,
+        "TargetPort": 5432,
+        "URL": ""
+      }
+    ],
+    "RunningFor": "57 seconds ago",
+    "Service": "postgres",
+    "Size": "0B",
+    "State": "running",
+    "Status": "Up 57 seconds (healthy)"
+  },
+  {
+    "Command": "\"/bin/prometheus --c\u2026\"",
+    "CreatedAt": "2026-10-30 10:53:21 +0000 UTC",
+    "ExitCode": 0,
+    "Health": "healthy",
+    "ID": "8f585eb32a1e",
+    "Image": "prom/prometheus:v3.15.1",
+    "Labels": "com.docker.compose.project=small-chain-measure-41043908030-1,com.docker.compose.project.working_dir=/home/runner/work/small-chain-platform/small-chain-platform,org.opencontainers.image.vendor=Prometheus,org.opencontainers.image.description=The Prometheus monitoring system and time series database,com.docker.compose.container-number=1,com.docker.compose.image=sha256:876ae6bcb0d6c9190d799e82c996fbe5faecdaaa0ec84f5e7dd272c0542ea63c,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/home/runner/work/small-chain-platform/small-chain-platform/compose.yaml,com.docker.compose.service=prometheus,io.prometheus.image.variant=busybox,org.opencontainers.image.authors=The Prometheus Authors,org.opencontainers.image.title=Prometheus,com.docker.compose.config-hash=b967c9ae5f7d3c6dd3f03fb2ff645f6f228c8a62fe39bb67029a5214171b2e86,com.docker.compose.depends_on=api:service_healthy:false,worker:service_healthy:false,com.docker.compose.version=2.38.2,org.opencontainers.image.licenses=Apache License 2.0,org.opencontainers.image.url=https://github.com/prometheus/prometheus,maintainer=The Prometheus Authors <prometheus-developers@googlegroups.com>,org.opencontainers.image.documentation=https://prometheus.io/docs,org.opencontainers.image.source=https://github.com/prometheus/prometheus",
+    "LocalVolumes": "1",
+    "Mounts": "small-chain-me\u2026,/home/runner/w\u2026",
+    "Name": "small-chain-measure-41043908030-1-prometheus-1",
+    "Names": "small-chain-measure-41043908030-1-prometheus-1",
+    "Networks": "small-chain-measure-41043908030-1_default",
+    "Ports": "127.0.0.1:9090->9090/tcp",
+    "Project": "small-chain-measure-41043908030-1",
+    "Publishers": [
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 9090,
+        "TargetPort": 9090,
+        "URL": "127.0.0.1"
+      }
+    ],
+    "RunningFor": "57 seconds ago",
+    "Service": "prometheus",
+    "Size": "0B",
+    "State": "running",
+    "Status": "Up 45 seconds (healthy)"
+  },
+  {
+    "Command": "\"/small-chain-worker\u2026\"",
+    "CreatedAt": "2026-10-30 10:53:21 +0000 UTC",
+    "ExitCode": 0,
+    "Health": "healthy",
+    "ID": "0d0c6e703a99",
+    "Image": "small-chain-platform:local",
+    "Labels": "com.docker.compose.project=small-chain-measure-41043908030-1,com.docker.compose.project.config_files=/home/runner/work/small-chain-platform/small-chain-platform/compose.yaml,com.docker.compose.project.working_dir=/home/runner/work/small-chain-platform/small-chain-platform,com.docker.compose.service=worker,com.docker.compose.version=2.38.2,com.docker.compose.config-hash=44f678361f871bb7bf7931397f2e43565a9708b420cbf58910cbcdc139f6ae77,com.docker.compose.depends_on=migrate:service_completed_successfully:false,postgres:service_healthy:false,com.docker.compose.oneoff=False,com.docker.compose.container-number=1",
+    "LocalVolumes": "0",
+    "Mounts": "",
+    "Name": "small-chain-measure-41043908030-1-worker-1",
+    "Names": "small-chain-measure-41043908030-1-worker-1",
+    "Networks": "small-chain-measure-41043908030-1_default",
+    "Ports": "8080/tcp, 127.0.0.1:9091->9091/tcp",
+    "Project": "small-chain-measure-41043908030-1",
+    "Publishers": [
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 0,
+        "TargetPort": 8080,
+        "URL": ""
+      },
+      {
+        "Protocol": "tcp",
+        "PublishedPort": 9091,
+        "TargetPort": 9091,
+        "URL": "127.0.0.1"
+      }
+    ],
+    "RunningFor": "57 seconds ago",
+    "Service": "worker",
+    "Size": "0B",
+    "State": "running",
+    "Status": "Up 50 seconds (healthy)"
+  }
+]

@@ -1,0 +1,1 @@
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"small_chain_job_state_metrics_up","instance":"api:8080","job":"small-chain-api"},"value":[1793357658.506,"1"]}]}}

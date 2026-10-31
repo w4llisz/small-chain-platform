@@ -1,9 +1,10 @@
 # Reproducible measurement protocol
 
 Small Chain separates measurement tooling from performance claims. The
-`small-chain-load` command is implemented; a controlled benchmark report is the
-next milestone. Until that report exists, the repository does not claim a
-throughput, percentile latency, worker-scaling ratio or SLO.
+`small-chain-load` command and the first reviewed [controlled CI
+measurement](measurements/8444b4f/README.md) are implemented. That single
+shared-runner result does not establish production throughput, percentile
+latency, a worker-scaling ratio or an SLO.
 
 ## Generator contract
 
@@ -131,3 +132,12 @@ A committed result must include all of the following alongside raw output:
 Only after a fixed workload matrix has repeatable raw evidence should the
 project calculate percentiles from histogram buckets or propose alert/SLO
 thresholds.
+
+## Reviewed evidence
+
+The first preserved bundle is indexed in [`docs/measurements/`](measurements/).
+Its directory contains the exact generated report, manifest, scenario outputs,
+Prometheus responses, Compose state, Docker resource snapshot and review notes.
+Run the validator against that directory to reproduce the integrity and
+convergence decision without Docker. More independent runs are still required
+before deriving a threshold or portable performance conclusion.

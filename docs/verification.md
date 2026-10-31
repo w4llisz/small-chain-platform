@@ -398,3 +398,23 @@ scaling claims, thresholds and SLOs. It is a deterministic review view, not a
 real measurement result. The local `make verify` result and current CI state
 for this revision are recorded in the corresponding commit report rather than
 predeclared here.
+
+## M4.5b3 first reviewed CI measurement — 2026-10-31
+
+CI run #53 completed `web`, `verify`, `postgres`, real Chromium `e2e` and the
+isolated Compose `measurement` job successfully. The measurement artifact was
+downloaded before expiry; its ZIP SHA-256
+`26370acb4f50dc199715653abc0b6ddac876d007ec3b2bd89fa0f3f84f43ad1b`
+matched GitHub's recorded digest.
+
+The source-revision validator passed all hashes, matrix controls, admission
+accounting, Prometheus target/state convergence and worker observations for
+`8444b4f0c4bc18b63ecf873504e36521acba03fb`. Re-rendering the Markdown from the
+downloaded JSON was byte-identical. The committed evidence records 540 accepted
+requests, 540 durable successes, zero active jobs and 540 worker attempts. A
+repository-level `make verify` also passes after adding the report and docs.
+
+This is one shared-runner, fixed-order, no-warm-up experiment. The review does
+not claim production throughput, percentile latency, causal scaling,
+availability or an SLO. All raw inputs and limitations are preserved under
+`docs/measurements/8444b4f/` for independent review.

@@ -1,0 +1,56 @@
+{
+  "captured_at": "2026-10-30T10:54:01.761081+00:00",
+  "host": {
+    "cpu_count": 4,
+    "cpu_model": "AMD EPYC 7763 64-Core Processor",
+    "machine": "x86_64",
+    "memory_total_kib": 16367524,
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39"
+  },
+  "limitations": [
+    "GitHub-hosted runner performance is shared and variable.",
+    "Client latency ends at admission response body close, not terminal completion.",
+    "Docker stats is an end-of-run snapshot, not a peak-resource measurement.",
+    "Scenarios run in fixed 1, 4, 16 concurrency order without a warm-up.",
+    "All scenarios share one API process and database, so cache and order effects remain."
+  ],
+  "matrix": {
+    "concurrency": [
+      1,
+      4,
+      16
+    ],
+    "delay_ms": 25,
+    "fail_first_attempts": 0,
+    "max_attempts": 3,
+    "repetitions": 3,
+    "request_timeout": "10s",
+    "requests_per_run": 60,
+    "timeout_ms": 1000
+  },
+  "runner": {
+    "github_actions": true,
+    "run_attempt": "1",
+    "run_id": "41043908030",
+    "runner_arch": "X64",
+    "runner_name": "GitHub Actions 1000000149",
+    "runner_os": "Linux",
+    "shared_or_virtualized": true
+  },
+  "schema_version": 1,
+  "source": {
+    "commit_sha": "8444b4f0c4bc18b63ecf873504e36521acba03fb",
+    "tracked_tree_dirty": false
+  },
+  "stack": {
+    "database": "postgres:16",
+    "volume_policy": "new isolated volumes deleted after collection",
+    "worker_concurrency": 4,
+    "worker_processes": 1
+  },
+  "toolchain": {
+    "docker_compose": "2.38.2",
+    "docker_server": "28.0.4",
+    "go": "go version go1.27.1 linux/amd64"
+  }
+}

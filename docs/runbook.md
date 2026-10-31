@@ -174,6 +174,6 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 
 The workflow runs on PRs, main and feature-branch pushes, with read-only contents permission, pinned action commits and no secrets. It checks formatting, vet, race tests, a short fuzz run, static build, process smoke and container build. Dependabot tracks actions/Docker updates.
 
-Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads a bounded raw-evidence bundle from an isolated durable stack on each main push. Review repeated bundles and commit a measured report before gating on performance thresholds.
+Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads a bounded raw-evidence bundle from an isolated durable stack on each main push. The first reviewed bundle is committed under `docs/measurements/`; review additional independent bundles before gating on performance thresholds.
 
 Authentication, authorization, transport security and resource/connection limits are prerequisites for public hosting, outside the local demonstration's M1 scope.

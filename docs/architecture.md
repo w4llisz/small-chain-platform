@@ -573,3 +573,23 @@ request-rate calculation, worker-scaling comparison or SLO selection. Its
 output is a deterministic review aid derived from raw JSON, not a replacement
 for that evidence. Publishing a real measured report still requires a retained
 green bundle from the source revision and review of the recorded limitations.
+
+## M4.5b3: first reviewed CI measurement (implemented)
+
+The repository preserves the complete JSON evidence from CI run #53 under
+`docs/measurements/8444b4f/`. The downloaded ZIP digest matched GitHub's
+artifact digest. The commit-bound validator passed against the source revision,
+and a fresh Markdown render was byte-identical to the artifact's derived report.
+This keeps the review reproducible after the short-lived workflow artifact
+expires.
+
+The controlled run submitted 540 jobs across three repetitions at client
+concurrency 1, 4 and 16. Every admission was accepted and every job reached
+durable success; the terminal snapshot contained no queued, running or retrying
+work and the worker recorded 540 attempts. Per-run observations and exact host,
+toolchain and workload context remain beside the raw evidence.
+
+The result describes one fixed-order experiment on a shared runner without a
+warm-up. It does not establish production capacity, a latency percentile,
+worker scaling, availability or an SLO. Repetition on independent runners is
+required before using these observations to justify a threshold.

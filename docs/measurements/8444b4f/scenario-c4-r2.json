@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-30T10:54:02.295066686Z",
+  "target": "http://127.0.0.1:8080/v1/jobs",
+  "duration_ms": 56.385,
+  "workload": {
+    "requests": 60,
+    "concurrency": 4,
+    "request_timeout_ms": 10000,
+    "key_prefix": "m45-c4-r2",
+    "payload_bytes": 23,
+    "payload_sha256": "56a6e7dc07167fbab96d6db2e00a282f8a50d386bb0d5d7eaa37c96de284da48",
+    "delay_ms": 25,
+    "fail_first_attempts": 0,
+    "max_attempts": 3,
+    "timeout_ms": 1000
+  },
+  "counts": {
+    "offered": 60,
+    "accepted": 60,
+    "replayed": 0,
+    "queue_full": 0,
+    "record_capacity": 0,
+    "draining": 0,
+    "other_client_error": 0,
+    "server_error": 0,
+    "other_status": 0,
+    "transport_error": 0
+  },
+  "admission_latency": {
+    "min_ms": 1.788,
+    "mean_ms": 3.657,
+    "max_ms": 7.1,
+    "cumulative_buckets": [
+      {
+        "le_ms": "5",
+        "count": 55
+      },
+      {
+        "le_ms": "10",
+        "count": 60
+      },
+      {
+        "le_ms": "25",
+        "count": 60
+      },
+      {
+        "le_ms": "50",
+        "count": 60
+      },
+      {
+        "le_ms": "100",
+        "count": 60
+      },
+      {
+        "le_ms": "250",
+        "count": 60
+      },
+      {
+        "le_ms": "500",
+        "count": 60
+      },
+      {
+        "le_ms": "1000",
+        "count": 60
+      },
+      {
+        "le_ms": "2500",
+        "count": 60
+      },
+      {
+        "le_ms": "5000",
+        "count": 60
+      },
+      {
+        "le_ms": "10000",
+        "count": 60
+      },
+      {
+        "le_ms": "30000",
+        "count": 60
+      },
+      {
+        "le_ms": "60000",
+        "count": 60
+      },
+      {
+        "le_ms": "+Inf",
+        "count": 60
+      }
+    ]
+  }
+}

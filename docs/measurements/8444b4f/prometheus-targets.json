@@ -1,0 +1,1 @@
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","instance":"api:8080","job":"small-chain-api"},"value":[1793357658.499,"1"]},{"metric":{"__name__":"up","instance":"worker:9091","job":"small-chain-worker"},"value":[1793357658.499,"1"]}]}}
