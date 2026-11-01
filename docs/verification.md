@@ -418,3 +418,29 @@ This is one shared-runner, fixed-order, no-warm-up experiment. The review does
 not claim production throughput, percentile latency, causal scaling,
 availability or an SLO. All raw inputs and limitations are preserved under
 `docs/measurements/8444b4f/` for independent review.
+
+## M4.6a optional bounded tracing — 2026-11-01
+
+The API tracing test supplies a sampled W3C parent, requires exactly one fixed
+admission server span and checks the resulting trace ID, generated job ID,
+replay flag and bounded outcome. It rejects any exported payload or idempotency
+key value. A synchronous exporter that always fails still leaves the HTTP
+response at 202, proving the observation path cannot change admission success.
+The worker test requires one consumer span with job ID, attempt, fencing version
+and terminal outcome while excluding payload and owner.
+
+Go 1.27.2 `make verify` passes formatting, vet, all race tests, six static
+command builds and the real-process retry/idempotency/SIGTERM smoke test. The
+focused tracing, HTTP and worker race tests pass; `internal/httpapi` reports
+86.0% statement coverage and `internal/dbworker` reports 82.8%. Integration-tag
+compilation/vet and `go mod verify` also pass. A real memory-mode binary pointed
+at an unreachable loopback OTLP endpoint still returned 202 for a submission
+and exited zero after SIGTERM, exercising the bounded batch export failure path.
+The preceding main revision's CI
+run #54 is green across web, verify, PostgreSQL, Chromium E2E and measurement.
+
+No live collector is available in this execution environment, so this increment
+does not claim a verified OTLP network delivery or cross-process trace view.
+That bounded Compose collector smoke is the M4.6b task. The current worker span
+is a separate root correlated by generated job ID; no persisted parent/child
+relationship is claimed.

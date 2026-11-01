@@ -14,6 +14,9 @@ import (
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 type recordedOutcome struct {
@@ -247,7 +250,48 @@ func TestSafeMessageIsBoundedUTF8(t *testing.T) {
 	}
 }
 
-func newTestWorker(t *testing.T, store LeaseStore, execute jobs.Executor, concurrency int) *Worker {
+func TestWorkerAttemptTraceHasFixedShapeWithoutPayloadOrOwner(t *testing.T) {
+	store := &fakeStore{claims: []postgres.Claim{claim("00000000000000000000000000000001", `{"secret":"do-not-export"}`)}}
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	tracer := provider.Tracer("test")
+	worker := newTestWorker(t, store, func(context.Context, jobs.Spec, int) (string, error) {
+		return "digest", nil
+	}, 1, WithTracer(tracer))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := runWorker(worker, ctx)
+	waitFor(t, func() bool {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		return len(store.completed) == 1
+	})
+	cancel()
+	waitRun(t, done)
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("spans=%d, want 1", len(spans))
+	}
+	span := spans[0]
+	if span.Name != "small_chain.worker.attempt" || span.SpanKind.String() != "consumer" {
+		t.Fatalf("unexpected span: name=%q kind=%s", span.Name, span.SpanKind)
+	}
+	attributes := workerTraceAttributes(span.Attributes)
+	if attributes["small_chain.job.id"] != "00000000000000000000000000000001" ||
+		attributes["small_chain.job.attempt"] != "1" ||
+		attributes["small_chain.lease.version"] != "1" ||
+		attributes["small_chain.attempt.outcome"] != "succeeded" {
+		t.Fatalf("unexpected attributes: %#v", attributes)
+	}
+	for key, value := range attributes {
+		if strings.Contains(key, "payload") || strings.Contains(key, "owner") || strings.Contains(value, "do-not-export") || strings.Contains(value, "test-worker") {
+			t.Fatalf("sensitive or unbounded attribute exported: %s=%q", key, value)
+		}
+	}
+}
+
+func newTestWorker(t *testing.T, store LeaseStore, execute jobs.Executor, concurrency int, options ...Option) *Worker {
 	t.Helper()
 	cfg := DefaultConfig("test-worker")
 	cfg.Concurrency = concurrency
@@ -257,11 +301,19 @@ func newTestWorker(t *testing.T, store LeaseStore, execute jobs.Executor, concur
 	cfg.RetryBase = 20 * time.Millisecond
 	cfg.RetryMax = 20 * time.Millisecond
 	cfg.RecoveryInterval = time.Hour
-	worker, err := New(cfg, store, execute, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker, err := New(cfg, store, execute, slog.New(slog.NewTextHandler(io.Discard, nil)), options...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return worker
+}
+
+func workerTraceAttributes(values []attribute.KeyValue) map[string]string {
+	result := make(map[string]string, len(values))
+	for _, value := range values {
+		result[string(value.Key)] = value.Value.Emit()
+	}
+	return result
 }
 
 func claim(id, payload string) postgres.Claim {

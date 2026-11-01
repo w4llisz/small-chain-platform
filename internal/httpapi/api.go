@@ -15,6 +15,10 @@ import (
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type API struct {
@@ -28,21 +32,44 @@ type API struct {
 	requests     atomic.Uint64
 	serverErrors atomic.Uint64
 	sequence     atomic.Uint64
+	tracer       trace.Tracer
+	propagator   propagation.TextMapPropagator
 }
 
-func New(engine *jobs.Engine, logger *slog.Logger) *API {
-	return newAPI(memoryBackend{engine: engine}, engine.Stats, nil, "memory", logger)
+type Option func(*API)
+
+// WithTracing enables admission spans and W3C trace-context extraction.
+func WithTracing(tracer trace.Tracer, propagator propagation.TextMapPropagator) Option {
+	return func(api *API) {
+		if tracer != nil {
+			api.tracer = tracer
+		}
+		if propagator != nil {
+			api.propagator = propagator
+		}
+	}
+}
+
+func New(engine *jobs.Engine, logger *slog.Logger, options ...Option) *API {
+	return newAPI(memoryBackend{engine: engine}, engine.Stats, nil, "memory", logger, options...)
 }
 
 // NewPostgres exposes durable admission, reads and cancellation. Store.Submit
 // commits before returning, so HTTP 202 means the job is durable. Migrations and
 // worker execution remain separate process responsibilities.
-func NewPostgres(store *postgres.Store, logger *slog.Logger) *API {
-	return newAPI(postgresBackend{store: store}, nil, store.CountJobsByState, "postgres", logger)
+func NewPostgres(store *postgres.Store, logger *slog.Logger, options ...Option) *API {
+	return newAPI(postgresBackend{store: store}, nil, store.CountJobsByState, "postgres", logger, options...)
 }
 
-func newAPI(backend jobBackend, stats func() jobs.Stats, jobCounts func(context.Context) (postgres.JobCounts, error), storage string, logger *slog.Logger) *API {
-	a := &API{backend: backend, stats: stats, jobCounts: jobCounts, storage: storage, log: logger}
+func newAPI(backend jobBackend, stats func() jobs.Stats, jobCounts func(context.Context) (postgres.JobCounts, error), storage string, logger *slog.Logger, options ...Option) *API {
+	noop := trace.NewNoopTracerProvider()
+	a := &API{
+		backend: backend, stats: stats, jobCounts: jobCounts, storage: storage, log: logger,
+		tracer: noop.Tracer("small-chain-disabled"), propagator: propagation.TraceContext{},
+	}
+	for _, option := range options {
+		option(a)
+	}
 	a.accepting.Store(true)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/jobs", a.submit)
@@ -79,12 +106,37 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Request-ID", id)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	rw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	var span trace.Span
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/jobs" {
+		parent := a.propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+		ctx, admissionSpan := a.tracer.Start(parent, "small_chain.http.admission",
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(
+				attribute.String("http.request.method", http.MethodPost),
+				attribute.String("http.route", "/v1/jobs"),
+				attribute.String("small_chain.storage", a.storage),
+			),
+		)
+		span = admissionSpan
+		r = r.WithContext(ctx)
+		defer func() {
+			span.SetAttributes(attribute.Int("http.response.status_code", rw.status))
+			if rw.status >= 500 {
+				span.SetStatus(codes.Error, "server error")
+			}
+			span.End()
+		}()
+	}
 	a.mux.ServeHTTP(rw, r)
 	a.requests.Add(1)
 	if rw.status >= 500 {
 		a.serverErrors.Add(1)
 	}
-	a.log.Info("http.request", "request_id", id, "method", r.Method, "route", r.Pattern, "status", rw.status, "duration_ms", time.Since(start).Milliseconds())
+	fields := []any{"request_id", id, "method", r.Method, "route", r.Pattern, "status", rw.status, "duration_ms", time.Since(start).Milliseconds()}
+	if span != nil && span.SpanContext().IsValid() {
+		fields = append(fields, "trace_id", span.SpanContext().TraceID().String(), "span_id", span.SpanContext().SpanID().String())
+	}
+	a.log.Info("http.request", fields...)
 }
 
 // StopAdmission is idempotent. Requests already inside Submit may finish; new
@@ -126,6 +178,7 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	var spec jobs.Spec
 	if err := dec.Decode(&spec); err != nil {
+		setAdmissionOutcome(r.Context(), "invalid_json")
 		decodeError(w, err)
 		return
 	}
@@ -134,14 +187,25 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			err = errors.New("multiple JSON values")
 		}
+		setAdmissionOutcome(r.Context(), "invalid_json")
 		decodeError(w, err)
 		return
 	}
 	j, replay, err := a.backend.Submit(r.Context(), r.Header.Get("Idempotency-Key"), spec)
 	if err != nil {
+		setAdmissionOutcome(r.Context(), admissionErrorOutcome(err))
 		a.engineError(w, err)
 		return
 	}
+	outcome := "accepted"
+	if replay {
+		outcome = "replayed"
+	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("small_chain.admission.outcome", outcome),
+		attribute.Bool("small_chain.idempotency.replayed", replay),
+		attribute.String("small_chain.job.id", j.ID),
+	)
 	w.Header().Set("Location", "/v1/jobs/"+j.ID)
 	w.Header().Set("Idempotency-Replayed", strconv.FormatBool(replay))
 	status := http.StatusAccepted
@@ -149,6 +213,27 @@ func (a *API) submit(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	writeJSON(w, status, j)
+}
+
+func setAdmissionOutcome(ctx context.Context, outcome string) {
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("small_chain.admission.outcome", outcome))
+}
+
+func admissionErrorOutcome(err error) string {
+	switch {
+	case errors.Is(err, jobs.ErrInvalid):
+		return "invalid_request"
+	case errors.Is(err, jobs.ErrConflict), errors.Is(err, jobs.ErrTerminal):
+		return "conflict"
+	case errors.Is(err, jobs.ErrFull):
+		return "queue_full"
+	case errors.Is(err, jobs.ErrClosed):
+		return "draining"
+	case errors.Is(err, jobs.ErrCapacity):
+		return "record_capacity"
+	default:
+		return "internal_error"
+	}
 }
 
 func decodeError(w http.ResponseWriter, err error) {

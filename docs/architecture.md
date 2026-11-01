@@ -593,3 +593,28 @@ The result describes one fixed-order experiment on a shared runner without a
 warm-up. It does not establish production capacity, a latency percentile,
 worker scaling, availability or an SLO. Repetition on independent runners is
 required before using these observations to justify a threshold.
+
+## M4.6a: optional bounded OpenTelemetry traces (implemented)
+
+Both application commands accept `-trace-endpoint` and
+`-trace-sample-ratio`. An empty endpoint installs a process-local no-op provider
+and starts no exporter goroutine. When enabled, the OTLP/HTTP batch processor
+holds at most 256 spans, sends at most 64 per batch, waits at most one second to
+form a batch and gives each export or shutdown flush two seconds. Export retry
+is disabled. Collector failure can drop evidence and produce a warning but
+cannot change admission, execution or persisted outcome semantics.
+
+`POST /v1/jobs` extracts W3C `traceparent` and creates one server span with a
+fixed name. It records the storage mode, response status, a bounded admission
+outcome, replay state and the generated 32-character job ID. The API log adds
+the SDK-generated trace and span IDs. It never exports request payloads,
+idempotency keys, error text or baggage.
+
+Each durable claim creates one consumer span around executor, heartbeat and
+outcome persistence. Its fixed attribute set is job ID, numeric attempt,
+numeric fencing version and a bounded outcome such as `succeeded`, `retrying`,
+`failed`, `lease_lost` or `stale_lease`. Worker owner and payload remain absent.
+The worker process does not read the original HTTP context from PostgreSQL, so
+its span is a separate root correlated by job ID, not a claimed parent/child
+causal chain. Persisting a bounded trace link would require an explicit schema
+and retention decision rather than hiding trace state inside the task payload.

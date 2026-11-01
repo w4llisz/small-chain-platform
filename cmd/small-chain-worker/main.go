@@ -17,6 +17,7 @@ import (
 	"github.com/w4llisz/small-chain-platform/internal/dbworker"
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
+	"github.com/w4llisz/small-chain-platform/internal/telemetry"
 )
 
 func main() {
@@ -39,6 +40,8 @@ func run(args []string, logger *slog.Logger) error {
 	recovery := flags.Duration("recovery-interval", time.Second, "expired-lease sweep interval")
 	recoveryBatch := flags.Int("recovery-batch", 100, "maximum leases recovered per sweep")
 	metricsAddr := flags.String("metrics-addr", "", "optional worker metrics listen address (for example 127.0.0.1:9091)")
+	traceEndpoint := flags.String("trace-endpoint", "", "optional OTLP/HTTP traces endpoint; empty disables tracing")
+	traceSampleRatio := flags.Float64("trace-sample-ratio", 1, "root trace sample ratio when tracing is enabled (0,1]")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -60,6 +63,13 @@ func run(args []string, logger *slog.Logger) error {
 	if err := dbworker.ValidateConfig(cfg); err != nil {
 		return err
 	}
+	traceProvider, err := telemetry.New(context.Background(), telemetry.Config{
+		Endpoint: *traceEndpoint, ServiceName: "small-chain-worker", SampleRatio: *traceSampleRatio,
+	})
+	if err != nil {
+		return err
+	}
+	defer telemetry.ShutdownNonFatal(traceProvider, logger)
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		return errors.New("DATABASE_URL is required")
@@ -71,7 +81,7 @@ func run(args []string, logger *slog.Logger) error {
 		return err
 	}
 	defer store.Close()
-	worker, err := dbworker.New(cfg, store, jobs.Checksum, logger)
+	worker, err := dbworker.New(cfg, store, jobs.Checksum, logger, dbworker.WithTracer(traceProvider.Tracer()))
 	if err != nil {
 		return err
 	}

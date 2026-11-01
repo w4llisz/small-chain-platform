@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func fixture(t *testing.T) (*jobs.Engine, *API) {
@@ -196,4 +201,71 @@ func TestCancelEndpoint(t *testing.T) {
 			t.Fatalf("%d: %s", w.Code, w.Body.String())
 		}
 	}
+}
+
+func TestAdmissionTraceUsesBoundedCorrelationAttributes(t *testing.T) {
+	engine, _ := fixture(t)
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	api := New(engine, slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithTracing(provider.Tracer("test"), propagation.TraceContext{}))
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/jobs", strings.NewReader(`{"kind":"demo.checksum","payload":"do-not-export"}`))
+	r.Header.Set("Idempotency-Key", "do-not-export-key")
+	r.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	w := httptest.NewRecorder()
+	api.ServeHTTP(w, r)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("spans=%d, want 1", len(spans))
+	}
+	span := spans[0]
+	if span.Name != "small_chain.http.admission" || span.SpanContext.TraceID().String() != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("unexpected span: name=%q trace=%s", span.Name, span.SpanContext.TraceID())
+	}
+	attributes := traceAttributes(span.Attributes)
+	if attributes["small_chain.admission.outcome"] != "accepted" ||
+		attributes["small_chain.idempotency.replayed"] != "false" ||
+		len(attributes["small_chain.job.id"]) != 32 {
+		t.Fatalf("unexpected attributes: %#v", attributes)
+	}
+	for key, value := range attributes {
+		if strings.Contains(key, "payload") || strings.Contains(key, "idempotency_key") ||
+			strings.Contains(value, "do-not-export") {
+			t.Fatalf("sensitive or unbounded attribute exported: %s=%q", key, value)
+		}
+	}
+}
+
+type failingTraceExporter struct{}
+
+func (failingTraceExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpan) error {
+	return errors.New("collector unavailable")
+}
+func (failingTraceExporter) Shutdown(context.Context) error { return nil }
+
+func TestAdmissionSucceedsWhenTraceExportFails(t *testing.T) {
+	engine, _ := fixture(t)
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(failingTraceExporter{}), sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	api := New(engine, slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithTracing(provider.Tracer("test"), propagation.TraceContext{}))
+
+	w := request(api, http.MethodPost, "/v1/jobs", "export-failure", `{"kind":"demo.checksum"}`)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("trace export failure changed admission: status=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func traceAttributes(values []attribute.KeyValue) map[string]string {
+	result := make(map[string]string, len(values))
+	for _, value := range values {
+		result[string(value.Key)] = value.Value.Emit()
+	}
+	return result
 }

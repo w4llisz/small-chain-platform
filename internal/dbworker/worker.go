@@ -14,6 +14,9 @@ import (
 
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const maxPersistedErrorBytes = 1024
@@ -61,6 +64,18 @@ type Worker struct {
 	attempts attemptMetrics
 	slots    chan struct{}
 	wg       sync.WaitGroup
+	tracer   trace.Tracer
+}
+
+type Option func(*Worker)
+
+// WithTracer enables one fixed-name span per durable worker attempt.
+func WithTracer(tracer trace.Tracer) Option {
+	return func(worker *Worker) {
+		if tracer != nil {
+			worker.tracer = tracer
+		}
+	}
 }
 
 // ValidateConfig checks worker bounds without opening a database connection.
@@ -83,14 +98,22 @@ func ValidateConfig(cfg Config) error {
 	return nil
 }
 
-func New(cfg Config, store LeaseStore, execute jobs.Executor, logger *slog.Logger) (*Worker, error) {
+func New(cfg Config, store LeaseStore, execute jobs.Executor, logger *slog.Logger, options ...Option) (*Worker, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, err
 	}
 	if store == nil || execute == nil || logger == nil {
 		return nil, errors.New("store, executor and logger are required")
 	}
-	return &Worker{cfg: cfg, store: store, execute: execute, log: logger, slots: make(chan struct{}, cfg.Concurrency)}, nil
+	worker := &Worker{
+		cfg: cfg, store: store, execute: execute, log: logger,
+		slots:  make(chan struct{}, cfg.Concurrency),
+		tracer: trace.NewNoopTracerProvider().Tracer("small-chain-disabled"),
+	}
+	for _, option := range options {
+		option(worker)
+	}
+	return worker, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -152,7 +175,16 @@ type outcome struct {
 }
 
 func (w *Worker) runClaim(claim postgres.Claim) {
-	attemptCtx, cancel := context.WithTimeout(context.Background(), time.Duration(claim.Job.Spec.TimeoutMS)*time.Millisecond)
+	spanCtx, span := w.tracer.Start(context.Background(), "small_chain.worker.attempt",
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("small_chain.job.id", claim.Job.ID),
+			attribute.Int("small_chain.job.attempt", claim.Job.Attempts),
+			attribute.Int64("small_chain.lease.version", claim.Version),
+		),
+	)
+	defer span.End()
+	attemptCtx, cancel := context.WithTimeout(spanCtx, time.Duration(claim.Job.Spec.TimeoutMS)*time.Millisecond)
 	defer cancel()
 	done := make(chan outcome, 1)
 	spec, attempt := claim.Job.Spec, claim.Job.Attempts
@@ -172,7 +204,13 @@ func (w *Worker) runClaim(claim postgres.Claim) {
 				result.err = err
 			}
 			cancel()
-			w.persist(claim, result)
+			outcome, err := w.persist(claim, result)
+			span.SetAttributes(attribute.String("small_chain.attempt.outcome", outcome))
+			if err != nil {
+				span.SetStatus(codes.Error, "outcome persistence failed")
+			} else if result.err != nil {
+				span.SetStatus(codes.Error, outcome)
+			}
 			return
 		case <-heartbeat.C:
 			renewed, err := w.store.Heartbeat(context.Background(), claim, w.cfg.LeaseDuration)
@@ -182,6 +220,8 @@ func (w *Worker) runClaim(claim postgres.Claim) {
 			}
 			cancel()
 			<-done // Executor contract requires prompt cancellation.
+			span.SetAttributes(attribute.String("small_chain.attempt.outcome", "lease_lost"))
+			span.SetStatus(codes.Error, "lease lost")
 			if !errors.Is(err, postgres.ErrStaleLease) {
 				w.log.Warn("dbworker.heartbeat_failed", "job_id", claim.Job.ID, "error", err)
 			}
@@ -203,18 +243,28 @@ func (w *Worker) PrometheusMetrics() string {
 	return w.attempts.prometheus()
 }
 
-func (w *Worker) persist(claim postgres.Claim, result outcome) {
-	var err error
+func (w *Worker) persist(claim postgres.Claim, result outcome) (string, error) {
+	var (
+		err     error
+		outcome string
+	)
 	if result.err == nil {
+		outcome = "succeeded"
 		_, err = w.store.Complete(context.Background(), claim, result.result)
 	} else if jobs.IsRetryable(result.err) {
+		outcome = "retrying"
 		_, err = w.store.FailAttempt(context.Background(), claim, safeMessage(result.err), w.backoff(claim.Job.Attempts))
 	} else {
+		outcome = "failed"
 		_, err = w.store.FailPermanent(context.Background(), claim, safeMessage(result.err))
 	}
 	if err != nil && !errors.Is(err, postgres.ErrStaleLease) {
 		w.log.Warn("dbworker.outcome_failed", "job_id", claim.Job.ID, "error", err)
 	}
+	if errors.Is(err, postgres.ErrStaleLease) {
+		outcome = "stale_lease"
+	}
+	return outcome, err
 }
 
 func (w *Worker) invoke(ctx context.Context, spec jobs.Spec, attempt int) (result string, err error) {

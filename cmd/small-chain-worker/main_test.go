@@ -22,6 +22,7 @@ func TestRunValidatesArgumentsBeforeConnecting(t *testing.T) {
 		{name: "owner", want: "owner is required"},
 		{name: "invalid owner", args: []string{"-owner=bad owner"}, want: "worker owner"},
 		{name: "database URL", args: []string{"-owner=test-worker"}, want: "DATABASE_URL is required"},
+		{name: "trace sample ratio", args: []string{"-owner=test-worker", "-trace-endpoint=http://collector:4318/v1/traces", "-trace-sample-ratio=0"}, want: "trace sample ratio"},
 		{name: "positionals", args: []string{"unexpected"}, want: "unexpected positional arguments"},
 		{name: "unknown flag", args: []string{"-unknown"}, want: "flag provided but not defined"},
 	}

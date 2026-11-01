@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable state gauges, worker attempt histograms, a health-ordered Compose demo with provisioned Prometheus/Grafana, and a reviewed real CI measurement with committed raw evidence; distributed tracing remains planned. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable metrics, a health-ordered Prometheus/Grafana demo, a reviewed real CI measurement with committed raw evidence, and optional bounded OpenTelemetry traces for admission and durable attempts. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -67,6 +67,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, process counters and authoritative PostgreSQL job-state gauges |
+| Optional tracing | W3C-correlated admission and durable-attempt spans through bounded OTLP/HTTP exporters; disabled by default and non-fatal on export failure |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, and real Go/PostgreSQL/Chromium operator workflow in GitHub Actions |
 
 ## Architecture
@@ -177,6 +178,25 @@ curl http://127.0.0.1:9091/metrics
 does not run DDL or start an in-process memory worker in this mode. Add more
 workers only with unique owners and distinct metrics addresses.
 
+Tracing is disabled unless each process receives a full OTLP/HTTP traces URL.
+The API extracts only W3C `traceparent`; it does not turn baggage, payloads or
+idempotency keys into attributes. API and worker spans share the generated
+32-character job ID for review, while the worker creates a separate root trace
+because trace context is not stored in the job row:
+
+```sh
+go run ./cmd/small-chain -storage=postgres \
+  -trace-endpoint=http://127.0.0.1:4318/v1/traces \
+  -trace-sample-ratio=1
+go run ./cmd/small-chain-worker -owner=worker-a \
+  -trace-endpoint=http://127.0.0.1:4318/v1/traces \
+  -trace-sample-ratio=1
+```
+
+The exporter queue and batches are bounded, retries are disabled, and shutdown
+flush has a two-second budget. A missing collector can drop traces and emit a
+warning, but it does not change admission or attempt outcomes.
+
 ## Limits and next milestones
 
 The operations console requires Node.js 24 and npm. Start the
@@ -223,7 +243,7 @@ repeating the write. Closing the view cannot undo a committed cancellation.
 - M1 memory records remain until process exit and reject new keys at `-max-jobs`. PostgreSQL defaults to 10,000 retained jobs and a 24-hour minimum replay window. The API deletes up to 100 eligible terminal rows at startup and every minute by default; `-retention-interval=0` disables this maintenance.
 - Cancellation is cooperative. The built-in executor honors context; arbitrary Go functions cannot be forcibly stopped.
 - No authentication, tenant isolation, public ingress, or production SLO is claimed.
-- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. A worker started with `-metrics-addr` exposes a fixed-bucket `small_chain_worker_attempt_duration_seconds` histogram for trusted executor wall time only. Compose scrapes both endpoints and provisions panels for target health, durable states, attempts, mean executor time and raw fixed buckets. A bounded CI harness validates completion, uploads raw controlled-workload evidence and derives a deterministic Markdown report. The first reviewed [real CI measurement](docs/measurements/8444b4f/README.md) preserves all raw JSON and its limitations. The worker series resets on restart and excludes claim, heartbeat and outcome persistence. OpenTelemetry traces remain future work; one shared-runner experiment does not establish a percentile, production throughput or SLO.
+- PostgreSQL mode reads retained job-state gauges from the database under a one-second scrape budget. `small_chain_job_state_metrics_up=0` and omitted state gauges distinguish a failed read from real zeroes. A worker started with `-metrics-addr` exposes a fixed-bucket `small_chain_worker_attempt_duration_seconds` histogram for trusted executor wall time only. Compose scrapes both endpoints and provisions panels for target health, durable states, attempts, mean executor time and raw fixed buckets. A bounded CI harness validates completion, uploads raw controlled-workload evidence and derives a deterministic Markdown report. The first reviewed [real CI measurement](docs/measurements/8444b4f/README.md) preserves all raw JSON and its limitations. Optional OTLP/HTTP traces cover admission and durable attempts but the current worker span is correlated by job ID rather than being a child of the admission span. The worker metric series resets on restart and excludes claim, heartbeat and outcome persistence. One shared-runner experiment does not establish a percentile, production throughput or SLO.
 - PostgreSQL records all low-frequency lifecycle transitions but deliberately omits heartbeat renewals. Its event endpoint is PostgreSQL-only; retained events are deleted with their job during bounded terminal cleanup.
 - PostgreSQL job listing is also unavailable in memory mode. List pages are stable against newer inserts but are not a multi-request snapshot; retention can remove older rows between pages.
 

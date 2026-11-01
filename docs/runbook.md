@@ -24,7 +24,23 @@ series as zero. The endpoint remains available so process-level evidence is not
 lost during a database incident.
 
 Process-local metrics reset on restart; state gauges count retained records.
-Wait-time histograms, admission reasons and traces remain planned.
+Wait-time histograms and admission-reason metrics remain planned. Optional
+admission and durable-attempt traces are available when both processes receive
+`-trace-endpoint`; they are disabled in the default Compose stack.
+
+## Optional traces
+
+Point the API and worker at a full OTLP/HTTP traces URL such as
+`http://127.0.0.1:4318/v1/traces`, and choose a root sampling ratio in `(0,1]`.
+The API accepts W3C `traceparent` but intentionally ignores baggage. Search the
+collector by `small_chain.job.id` to correlate the admission and attempt roots.
+Do not expect a parent/child relationship across PostgreSQL: the current schema
+does not persist incoming trace context.
+
+An unavailable collector is not a readiness failure. Export has no retry loop,
+the in-memory queue is capped at 256 spans, and the service continues even when
+spans are dropped. Inspect `telemetry.trace_shutdown_failed` only as a loss of
+observability evidence, not as proof that a job failed.
 
 ## Compose demo
 
@@ -168,7 +184,8 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Compose API or worker never starts:** inspect the one-shot `migrate` service first, then PostgreSQL health. Application services require a successful migration rather than retrying against an unknown schema.
 - **Prometheus or Grafana never becomes healthy:** inspect producer health first, then `docker compose logs prometheus grafana`. Prometheus depends on both metric endpoints; Grafana depends on Prometheus. Provisioned dashboard edits must be made in the repository JSON rather than the UI.
-- **Missing traces/percentiles:** planned, not present; the durable worker exports fixed histogram buckets but no measured percentile claim.
+- **Missing traces:** confirm both commands have a non-empty full OTLP/HTTP traces URL and the collector accepts HTTP/protobuf. The default Compose stack does not start a collector. A collector outage must not make readiness fail.
+- **Missing percentiles:** the durable worker exports fixed histogram buckets, but the project has not established a measured percentile claim.
 
 ## CI
 

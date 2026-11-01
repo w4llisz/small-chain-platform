@@ -17,6 +17,7 @@ import (
 	"github.com/w4llisz/small-chain-platform/internal/jobs"
 	"github.com/w4llisz/small-chain-platform/internal/maintenance"
 	"github.com/w4llisz/small-chain-platform/internal/postgres"
+	"github.com/w4llisz/small-chain-platform/internal/telemetry"
 )
 
 func main() {
@@ -36,16 +37,25 @@ func run(logger *slog.Logger) error {
 	grace := flag.Duration("shutdown-grace", 10*time.Second, "total graceful shutdown budget")
 	retentionInterval := flag.Duration("retention-interval", time.Minute, "PostgreSQL terminal cleanup cadence; 0 disables cleanup")
 	retentionBatch := flag.Int("retention-batch", 100, "maximum terminal jobs deleted per cleanup sweep")
+	traceEndpoint := flag.String("trace-endpoint", "", "optional OTLP/HTTP traces endpoint; empty disables tracing")
+	traceSampleRatio := flag.Float64("trace-sample-ratio", 1, "root trace sample ratio when tracing is enabled (0,1]")
 	flag.Parse()
 	if *grace <= 0 {
 		return errors.New("shutdown-grace must be positive")
 	}
+	traceProvider, err := telemetry.New(context.Background(), telemetry.Config{
+		Endpoint: *traceEndpoint, ServiceName: "small-chain-api", SampleRatio: *traceSampleRatio,
+	})
+	if err != nil {
+		return err
+	}
+	defer telemetry.ShutdownNonFatal(traceProvider, logger)
+	traceOption := httpapi.WithTracing(traceProvider.Tracer(), traceProvider.Propagator())
 	var (
 		api       *httpapi.API
 		engine    *jobs.Engine
 		pgStore   *postgres.Store
 		retention *maintenance.Retention
-		err       error
 	)
 	switch *storage {
 	case "memory":
@@ -53,7 +63,7 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		api = httpapi.New(engine, logger)
+		api = httpapi.New(engine, logger, traceOption)
 	case "postgres":
 		dsn := os.Getenv("DATABASE_URL")
 		if dsn == "" {
@@ -66,7 +76,7 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		api = httpapi.NewPostgres(pgStore, logger)
+		api = httpapi.NewPostgres(pgStore, logger, traceOption)
 		if *retentionInterval > 0 {
 			retention, err = maintenance.NewRetention(pgStore, logger, *retentionInterval, *retentionBatch)
 			if err != nil {
