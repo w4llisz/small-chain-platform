@@ -29,7 +29,7 @@ services:
 
   api:
     image: small-chain-platform:local
-    command: ["-addr=0.0.0.0:8080", "-storage=postgres", "-retention-interval=1m", "-retention-batch=100"]
+    command: ["-addr=0.0.0.0:8080", "-storage=postgres", "-retention-interval=1m", "-retention-batch=100", "-trace-endpoint=${SMALL_CHAIN_TRACE_ENDPOINT:-}", "-trace-sample-ratio=${SMALL_CHAIN_TRACE_SAMPLE_RATIO:-1}"]
     environment:
       DATABASE_URL: postgres://small_chain:local_compose_only@postgres:5432/small_chain?sslmode=disable
     depends_on:
@@ -51,7 +51,7 @@ services:
   worker:
     image: small-chain-platform:local
     entrypoint: ["/small-chain-worker"]
-    command: ["-owner=compose-worker", "-metrics-addr=0.0.0.0:9091"]
+    command: ["-owner=compose-worker", "-metrics-addr=0.0.0.0:9091", "-trace-endpoint=${SMALL_CHAIN_TRACE_ENDPOINT:-}", "-trace-sample-ratio=${SMALL_CHAIN_TRACE_SAMPLE_RATIO:-1}"]
     environment:
       DATABASE_URL: postgres://small_chain:local_compose_only@postgres:5432/small_chain?sslmode=disable
     depends_on:
@@ -120,6 +120,23 @@ services:
       - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: "on-failure:3"
     stop_grace_period: 10s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0
+    profiles: ["tracing"]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:13133:13133"
+    volumes:
+      - ./deploy/observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ${SMALL_CHAIN_TRACE_DIR:-./artifacts/traces}:/var/lib/otel:rw
+    restart: "on-failure:3"
+    stop_grace_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 volumes:
   postgres-data:

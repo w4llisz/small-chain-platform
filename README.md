@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable metrics, a health-ordered Prometheus/Grafana demo, a reviewed real CI measurement with committed raw evidence, and optional bounded OpenTelemetry traces for admission and durable attempts. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable metrics, a health-ordered Prometheus/Grafana demo, a reviewed real CI measurement with committed raw evidence, and optional bounded OpenTelemetry traces for admission and durable attempts. An opt-in Collector profile verifies that both process spans arrive with the same job ID while the default stack stays independent of tracing. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -67,7 +67,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, process counters and authoritative PostgreSQL job-state gauges |
-| Optional tracing | W3C-correlated admission and durable-attempt spans through bounded OTLP/HTTP exporters; disabled by default and non-fatal on export failure |
+| Optional tracing | W3C-correlated admission and durable-attempt spans through bounded OTLP/HTTP exporters; an opt-in Collector profile proves arrival without joining tracing to business health |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, and real Go/PostgreSQL/Chromium operator workflow in GitHub Actions |
 
 ## Architecture
@@ -104,7 +104,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |
 | `scripts/measure-compose.sh` | Runs the fixed clean-state load matrix and retains raw context, convergence and resource evidence |
 | `compose.yaml` | Health-ordered local PostgreSQL, migration, API, worker, Prometheus and Grafana stack |
-| `deploy/observability/` | Version-controlled Prometheus scrape config and provisioned Grafana dashboard |
+| `deploy/observability/` | Version-controlled Prometheus, Grafana and optional OpenTelemetry Collector configuration |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
 | `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
@@ -144,6 +144,20 @@ anonymous viewer because every published port is bound to host loopback.
 Prometheus is also available at `http://127.0.0.1:9090` and keeps 24 hours of
 local data. PostgreSQL remains on the private Compose network. The credentials
 in `compose.yaml` are limited to this local demonstration.
+
+Start the same stack with the optional local trace sink and inspect its
+newline-delimited OTLP JSON evidence:
+
+```sh
+make compose-trace-up
+cat artifacts/traces/traces.jsonl
+make compose-down
+```
+
+The `tracing` profile binds OTLP/HTTP 4318 and Collector health 13133 to host
+loopback. Its file sink rotates at 5 MiB, keeps two backups for at most one day,
+and is intended only for local evidence. The normal `make compose-up` service
+set excludes the Collector and supplies no trace endpoint to either process.
 
 Run a finite admission experiment against the started stack:
 
@@ -196,6 +210,10 @@ go run ./cmd/small-chain-worker -owner=worker-a \
 The exporter queue and batches are bounded, retries are disabled, and shutdown
 flush has a two-second budget. A missing collector can drop traces and emit a
 warning, but it does not change admission or attempt outcomes.
+`make compose-trace-smoke` additionally submits one durable job and requires an
+accepted admission span plus a succeeded attempt span with the same job ID. It
+also rejects trace evidence containing the submitted payload, idempotency key
+or worker owner.
 
 ## Limits and next milestones
 

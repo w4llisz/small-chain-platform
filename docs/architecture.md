@@ -618,3 +618,26 @@ The worker process does not read the original HTTP context from PostgreSQL, so
 its span is a separate root correlated by job ID, not a claimed parent/child
 causal chain. Persisting a bounded trace link would require an explicit schema
 and retention decision rather than hiding trace state inside the task payload.
+
+## M4.6b: optional Collector evidence (implemented)
+
+The default Compose service set excludes the Collector. Only the `tracing`
+profile starts it, and only the trace-specific targets supply its internal
+OTLP/HTTP URL to the API and worker. Neither application health check depends
+on Collector availability, preserving the non-fatal exporter contract.
+
+The profile exposes OTLP/HTTP 4318 and health 13133 on host loopback. A
+128 MiB Collector memory limiter sits inside a 256 MiB container ceiling;
+batches contain at most 64 spans. The file exporter writes newline-delimited
+OTLP JSON, flushes every 200 ms and rotates at 5 MiB with two backups retained
+for at most one day. This is bounded local demonstration evidence, not a
+production trace store.
+
+The smoke test uses a fresh project, named volumes and trace directory. It
+first proves the default service set omits the Collector, then waits for the
+profile stack, submits one durable checksum job and waits for success. A
+standard-library parser requires an `accepted` admission span and `succeeded`
+attempt span from the two expected services with the same job ID. It rejects
+sensitive attribute names and the known payload, idempotency key and worker
+owner values. Synthetic fixtures cover success, missing evidence and both leak
+classes independently of Docker.

@@ -6,7 +6,7 @@ GOFMT ?= gofmt
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build load fmt check-fmt vet test verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke measure-compose
+.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke measure-compose
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -28,7 +28,9 @@ vet:
 	$(GO) vet ./...
 test:
 	$(GO) test -race -count=1 -coverprofile=coverage.out ./...
-verify: check-fmt vet test build smoke
+test-scripts:
+	python3 -m unittest scripts/test_assert_traces.py
+verify: check-fmt vet test test-scripts build smoke
 smoke: build
 	python3 scripts/smoke.py
 fuzz:
@@ -64,6 +66,17 @@ compose-clean:
 
 compose-smoke:
 	bash scripts/compose-smoke.sh
+
+compose-trace-up:
+	mkdir -p artifacts/traces
+	chmod 0777 artifacts/traces
+	SMALL_CHAIN_TRACE_DIR="$(CURDIR)/artifacts/traces" \
+	SMALL_CHAIN_TRACE_ENDPOINT="http://otel-collector:4318/v1/traces" \
+	SMALL_CHAIN_TRACE_SAMPLE_RATIO="1" \
+		docker compose --profile tracing up --build --wait --wait-timeout 60
+
+compose-trace-smoke:
+	bash scripts/trace-compose-smoke.sh
 
 measure-compose:
 	bash scripts/measure-compose.sh

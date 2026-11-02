@@ -5,4 +5,6 @@
 /web/node_modules/
 /web/test-results/
 *.log
+__pycache__/
+*.pyc
 .env

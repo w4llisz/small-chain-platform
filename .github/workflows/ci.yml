@@ -88,6 +88,8 @@ jobs:
         run: docker build -t small-chain:ci .
       - name: Exercise durable Compose stack
         run: make compose-smoke
+      - name: Exercise optional trace collection
+        run: make compose-trace-smoke
 
   postgres:
     runs-on: ubuntu-latest

@@ -26,7 +26,7 @@ lost during a database incident.
 Process-local metrics reset on restart; state gauges count retained records.
 Wait-time histograms and admission-reason metrics remain planned. Optional
 admission and durable-attempt traces are available when both processes receive
-`-trace-endpoint`; they are disabled in the default Compose stack.
+`-trace-endpoint`; they are disabled in the default Compose service set.
 
 ## Optional traces
 
@@ -41,6 +41,18 @@ An unavailable collector is not a readiness failure. Export has no retry loop,
 the in-memory queue is capped at 256 spans, and the service continues even when
 spans are dropped. Inspect `telemetry.trace_shutdown_failed` only as a loss of
 observability evidence, not as proof that a job failed.
+
+For a local Collector and inspectable file evidence, use:
+
+```sh
+make compose-trace-up
+cat artifacts/traces/traces.jsonl
+```
+
+This opts into the `tracing` profile, publishes OTLP/HTTP 4318 and health 13133
+only on host loopback, and rotates the local JSON sink at 5 MiB with two backups
+retained for at most one day. The normal `make compose-up` excludes this service
+and does not configure application exporters.
 
 ## Compose demo
 
@@ -73,6 +85,12 @@ panel is empty, first inspect Prometheus **Status → Target health**, then quer
 `up{job=~"small-chain-(api|worker)"}`. Treat
 `small_chain_job_state_metrics_up == 0` as a database collection failure. The
 dashboard intentionally contains no production alert threshold or percentile.
+
+`make compose-trace-smoke` uses another fresh project and trace directory. It
+proves the default service set omits the Collector, starts the tracing profile,
+submits one durable job, and requires accepted admission plus succeeded worker
+spans with the same job ID. Its parser rejects evidence containing the known
+payload, idempotency key or worker owner before cleanup.
 
 ## Bounded load experiment
 
@@ -184,7 +202,7 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 - **Worker repeatedly logs claim/recovery failures:** verify `make migrate` completed and the worker role can access the migrated schema; do not grant migration DDL merely to hide startup errors.
 - **Compose API or worker never starts:** inspect the one-shot `migrate` service first, then PostgreSQL health. Application services require a successful migration rather than retrying against an unknown schema.
 - **Prometheus or Grafana never becomes healthy:** inspect producer health first, then `docker compose logs prometheus grafana`. Prometheus depends on both metric endpoints; Grafana depends on Prometheus. Provisioned dashboard edits must be made in the repository JSON rather than the UI.
-- **Missing traces:** confirm both commands have a non-empty full OTLP/HTTP traces URL and the collector accepts HTTP/protobuf. The default Compose stack does not start a collector. A collector outage must not make readiness fail.
+- **Missing traces:** confirm the `tracing` profile is active, `http://127.0.0.1:13133/` is healthy, both commands use the internal `http://otel-collector:4318/v1/traces` URL, and `artifacts/traces` is writable. The default Compose service set does not start a Collector. A Collector outage must not make application readiness fail.
 - **Missing percentiles:** the durable worker exports fixed histogram buckets, but the project has not established a measured percentile claim.
 
 ## CI

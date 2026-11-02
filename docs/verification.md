@@ -444,3 +444,26 @@ does not claim a verified OTLP network delivery or cross-process trace view.
 That bounded Compose collector smoke is the M4.6b task. The current worker span
 is a separate root correlated by generated job ID; no persisted parent/child
 relationship is claimed.
+
+## M4.6b optional Collector evidence — 2026-11-02
+
+The opt-in Compose profile pins OpenTelemetry Collector Contrib v0.164.0 and
+keeps the default service set independent. Its local-only pipeline has a
+128 MiB memory limiter, 64-span maximum batches, a 256 MiB container ceiling
+and a newline-delimited JSON sink that rotates at 5 MiB with two one-day
+backups. The file exporter is alpha and is used only as disposable local
+evidence, not as a production trace store.
+
+The fresh-project smoke first rejects any default configuration that includes
+the Collector. It then starts the profile, submits one real durable job and
+requires an `accepted` API span plus a `succeeded` worker span with the same
+32-character job ID. The validator rejects sensitive attribute names and the
+known payload, idempotency key and worker owner values anywhere in retained
+evidence.
+
+Four standard-library synthetic tests pass for correlated evidence, a missing
+successful attempt, a sensitive attribute name and a forbidden value. Python
+compilation, shell syntax, YAML parsing and repository checks also pass. Docker
+is unavailable in this local execution environment, so the real Collector
+delivery check is assigned to the bounded CI `compose-trace-smoke`; no local
+network-delivery result is claimed here.
