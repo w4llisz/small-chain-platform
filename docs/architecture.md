@@ -641,3 +641,28 @@ attempt span from the two expected services with the same job ID. It rejects
 sensitive attribute names and the known payload, idempotency key and worker
 owner values. Synthetic fixtures cover success, missing evidence and both leak
 classes independently of Docker.
+
+## M4.7a: bounded worker-crash incident evidence (implemented)
+
+The `incident` Compose profile defines two single-slot workers with distinct
+owners and metric ports. They use a two-second lease, 500 ms heartbeat and
+100 ms recovery cadence only to keep the demonstration bounded. The normal
+Compose service set does not start them. The drill starts the durable API
+without the default worker, submits one five-second checksum task, waits until
+worker A's claim is visible through immutable lifecycle history, then sends
+SIGKILL to that container.
+
+Worker B starts after the injected failure. It can recover the row only after
+database time says the lease expired. Recovery advances lease version 1 to
+version 2 and records `lease_recovered`; the next claim advances it to version
+3. Success must use that same version 3 token. The retained sequence therefore
+shows both liveness and the fence that prevents a version 1 writer from
+modifying the recovered row.
+
+Raw API state/history, worker A's container inspection, worker B's metrics,
+Compose state and worker logs are inputs to a standard-library validator. It
+binds evidence to the source commit, requires SIGKILL exit 137 with no OOM,
+checks the exact five-event sequence and terminal checksum, and renders a short
+operator diagnosis plus manifest. CI retains this synthetic incident bundle
+for 14 days. The checksum executor is idempotent; the drill does not extend the
+database fence to arbitrary external side effects or claim exactly-once work.

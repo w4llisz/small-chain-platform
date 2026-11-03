@@ -467,3 +467,22 @@ compilation, shell syntax, YAML parsing and repository checks also pass. Docker
 is unavailable in this local execution environment, so the real Collector
 delivery check is assigned to the bounded CI `compose-trace-smoke`; no local
 network-delivery result is claimed here.
+
+## M4.7a bounded worker-crash drill — 2026-11-03
+
+The new standard-library validator has synthetic cases for the accepted
+claim/recovery/reclaim/success sequence, an incorrect recovery fence, a
+non-SIGKILL exit and a missing recovery-worker attempt metric. These tests run
+inside `make verify`. Shell syntax, Compose/workflow YAML parsing and tracked
+diff checks are also part of the candidate verification.
+
+The isolated real-stack command waits for worker A's version 1 claim before
+SIGKILL. It retains exit 137 with `OOMKilled=false`, then requires worker B to
+record recovery version 2, claim and success version 3, terminal attempt two and
+the expected checksum. Its generated report explains the stale-writer fence and
+the exactly-once limitation; its manifest covers every retained evidence file.
+
+Docker is unavailable in this local execution environment, so no local
+container-crash result is claimed. The independent main-push `incident` CI job
+is the real PostgreSQL/Compose acceptance gate and uploads its raw bundle for 14
+days. The first green artifact remains to be reviewed and preserved by M4.7b.

@@ -70,6 +70,52 @@ services:
     restart: "on-failure:3"
     stop_grace_period: 35s
 
+  incident-worker-a:
+    image: small-chain-platform:local
+    profiles: ["incident"]
+    entrypoint: ["/small-chain-worker"]
+    command: ["-owner=incident-worker-a", "-concurrency=1", "-poll-interval=50ms", "-lease-duration=2s", "-heartbeat-interval=500ms", "-retry-base=100ms", "-retry-max=100ms", "-recovery-interval=100ms", "-recovery-batch=10", "-metrics-addr=0.0.0.0:9092"]
+    environment:
+      DATABASE_URL: postgres://small_chain:local_compose_only@postgres:5432/small_chain?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/healthcheck", "-url=http://127.0.0.1:9092/metrics", "-timeout=2s"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 1s
+    ports:
+      - "127.0.0.1:9092:9092"
+    restart: "no"
+    stop_grace_period: 2s
+
+  incident-worker-b:
+    image: small-chain-platform:local
+    profiles: ["incident"]
+    entrypoint: ["/small-chain-worker"]
+    command: ["-owner=incident-worker-b", "-concurrency=1", "-poll-interval=50ms", "-lease-duration=2s", "-heartbeat-interval=500ms", "-retry-base=100ms", "-retry-max=100ms", "-recovery-interval=100ms", "-recovery-batch=10", "-metrics-addr=0.0.0.0:9093"]
+    environment:
+      DATABASE_URL: postgres://small_chain:local_compose_only@postgres:5432/small_chain?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/healthcheck", "-url=http://127.0.0.1:9093/metrics", "-timeout=2s"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 1s
+    ports:
+      - "127.0.0.1:9093:9093"
+    restart: "no"
+    stop_grace_period: 12s
+
   prometheus:
     image: prom/prometheus:v3.15.1
     command:

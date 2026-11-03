@@ -6,7 +6,7 @@ GOFMT ?= gofmt
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke measure-compose
+.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -29,7 +29,7 @@ vet:
 test:
 	$(GO) test -race -count=1 -coverprofile=coverage.out ./...
 test-scripts:
-	python3 -m unittest scripts/test_assert_traces.py
+	python3 -m unittest discover -s scripts -p 'test_*.py'
 verify: check-fmt vet test test-scripts build smoke
 smoke: build
 	python3 scripts/smoke.py
@@ -77,6 +77,9 @@ compose-trace-up:
 
 compose-trace-smoke:
 	bash scripts/trace-compose-smoke.sh
+
+incident-compose:
+	bash scripts/incident-compose.sh
 
 measure-compose:
 	bash scripts/measure-compose.sh

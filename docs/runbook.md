@@ -92,6 +92,22 @@ submits one durable job, and requires accepted admission plus succeeded worker
 spans with the same job ID. Its parser rejects evidence containing the known
 payload, idempotency key or worker owner before cleanup.
 
+## Worker-crash incident drill
+
+Run `make incident-compose` from a clean tracked tree. The command uses a fresh
+Compose project and volumes, submits one controlled five-second checksum task,
+waits for `incident-worker-a` to claim it, sends SIGKILL, then starts
+`incident-worker-b`. The second worker recovers the expired two-second lease and
+must complete attempt two within the bounded wait.
+
+Evidence is written to `artifacts/incident/`: final job and lifecycle JSON,
+worker A container inspection, worker B metrics, Compose state, worker logs, a
+deterministic diagnosis and `manifest.sha256`. The validator requires the fence
+sequence version 1 claim → version 2 recovery → version 3 reclaim/success. Exit
+137 with `OOMKilled=false` distinguishes the injected process loss from an OOM
+incident. The command always removes its containers and volumes; CI retains the
+evidence bundle for 14 days.
+
 ## Bounded load experiment
 
 Use `make load` for the default 100-request workload or pass explicit flags to
@@ -203,12 +219,13 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 - **Compose API or worker never starts:** inspect the one-shot `migrate` service first, then PostgreSQL health. Application services require a successful migration rather than retrying against an unknown schema.
 - **Prometheus or Grafana never becomes healthy:** inspect producer health first, then `docker compose logs prometheus grafana`. Prometheus depends on both metric endpoints; Grafana depends on Prometheus. Provisioned dashboard edits must be made in the repository JSON rather than the UI.
 - **Missing traces:** confirm the `tracing` profile is active, `http://127.0.0.1:13133/` is healthy, both commands use the internal `http://otel-collector:4318/v1/traces` URL, and `artifacts/traces` is writable. The default Compose service set does not start a Collector. A Collector outage must not make application readiness fail.
+- **Incident drill does not recover:** inspect `artifacts/incident/failure-compose-logs.txt` and the event endpoint. Worker A must have a version 1 `claimed` event before SIGKILL; worker B cannot recover before the database lease expires. Port 8080, 9092 or 9093 conflicts also prevent the isolated drill from starting.
 - **Missing percentiles:** the durable worker exports fixed histogram buckets, but the project has not established a measured percentile claim.
 
 ## CI
 
 The workflow runs on PRs, main and feature-branch pushes, with read-only contents permission, pinned action commits and no secrets. It checks formatting, vet, race tests, a short fuzz run, static build, process smoke and container build. Dependabot tracks actions/Docker updates.
 
-Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads a bounded raw-evidence bundle from an isolated durable stack on each main push. The first reviewed bundle is committed under `docs/measurements/`; review additional independent bundles before gating on performance thresholds.
+Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads bounded measurement and worker-crash incident bundles from isolated durable stacks on each main push. The first reviewed measurement bundle is committed under `docs/measurements/`; review incident artifacts before preserving one under `docs/incidents/`.
 
 Authentication, authorization, transport security and resource/connection limits are prerequisites for public hosting, outside the local demonstration's M1 scope.

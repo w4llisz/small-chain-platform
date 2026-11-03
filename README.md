@@ -4,7 +4,7 @@ A small Go task execution platform with explicit concurrency limits and failure 
 
 Submit a task through HTTP, observe its lifecycle, retry transient failures, and cancel work without corrupting the final state. The project explores the operational problems behind background jobs: overload, duplicate requests, deadlines, shutdown, and eventually worker crashes.
 
-**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable metrics, a health-ordered Prometheus/Grafana demo, a reviewed real CI measurement with committed raw evidence, and optional bounded OpenTelemetry traces for admission and durable attempts. An opt-in Collector profile verifies that both process spans arrive with the same job ID while the default stack stays independent of tracing. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
+**Status: M1 memory mode and the M2 durable HTTP/worker path are runnable.** The default remains the bounded in-memory demo. With `-storage=postgres`, HTTP acceptance, lookup, cancellation, recent-job listing and lifecycle history use PostgreSQL as the only source of truth; a separate worker process claims the same durable records, while the API runs bounded terminal cleanup. M2 is complete. M3 is complete with a React/TypeScript console and a green real-stack Chromium workflow. M4 now includes durable metrics, a health-ordered Prometheus/Grafana demo, a reviewed real CI measurement, optional bounded OpenTelemetry traces, and a worker-crash incident drill with retained recovery evidence. This repository originally contained a blockchain placeholder; the name now refers to the task lifecycle. No blockchain node, consensus algorithm, or token is required.
 
 ## Try it in five minutes
 
@@ -66,6 +66,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Operations console | Job selection shows normalized spec, result/error and forward-paged history; confirmed cancellation refreshes authoritative reads, handles 409 and guards duplicate requests |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
+| Incident evidence | Isolated Compose drill kills a lease owner, validates the recovery/reclaim fence sequence and retains raw lifecycle/metric evidence plus an operator diagnosis |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, process counters and authoritative PostgreSQL job-state gauges |
 | Optional tracing | W3C-correlated admission and durable-attempt spans through bounded OTLP/HTTP exporters; an opt-in Collector profile proves arrival without joining tracing to business health |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, and real Go/PostgreSQL/Chromium operator workflow in GitHub Actions |
@@ -103,6 +104,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `web/` | React/TypeScript console, client/component tests and bounded Playwright operator workflow |
 | `scripts/e2e.sh` | Starts migrated PostgreSQL-backed API, one worker and Vite; bounds readiness waits and cleans up child processes |
 | `scripts/measure-compose.sh` | Runs the fixed clean-state load matrix and retains raw context, convergence and resource evidence |
+| `scripts/incident-compose.sh` | Runs the isolated worker SIGKILL/recovery drill and validates its retained evidence |
 | `compose.yaml` | Health-ordered local PostgreSQL, migration, API, worker, Prometheus and Grafana stack |
 | `deploy/observability/` | Version-controlled Prometheus, Grafana and optional OpenTelemetry Collector configuration |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
@@ -214,6 +216,21 @@ warning, but it does not change admission or attempt outcomes.
 accepted admission span plus a succeeded attempt span with the same job ID. It
 also rejects trace evidence containing the submitted payload, idempotency key
 or worker owner.
+
+Run the bounded worker-crash drill from a clean tracked tree:
+
+```sh
+make incident-compose
+cat artifacts/incident/README.md
+```
+
+The drill starts only PostgreSQL, migration, the API and its two incident-profile
+workers. It submits a controlled five-second task, waits for worker A's claim,
+sends SIGKILL, and lets worker B recover the expired two-second lease. Validation
+requires the lifecycle sequence `claim v1 → recovery fence v2 → reclaim v3 →
+success v3`, exit code 137 outside OOM handling, terminal attempt two and one
+observed recovery-worker attempt. CI preserves the raw JSON, metrics, container
+inspection, logs, report and SHA-256 manifest for 14 days.
 
 ## Limits and next milestones
 
