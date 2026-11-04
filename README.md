@@ -66,7 +66,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 | Operations console | Job selection shows normalized spec, result/error and forward-paged history; confirmed cancellation refreshes authoritative reads, handles 409 and guards duplicate requests |
 | Durable worker core | PostgreSQL admission cap, retention/replay policy, claims, heartbeat, fenced outcomes/cancel, recovery and bounded polling |
 | Process crash recovery | Separate worker command; Linux SIGKILL test proves another process recovers and stale completion is fenced |
-| Incident evidence | Isolated Compose drill kills a lease owner, validates the recovery/reclaim fence sequence and retains raw lifecycle/metric evidence plus an operator diagnosis |
+| Incident evidence | Isolated Compose drill kills a lease owner, validates the recovery/reclaim fence sequence and retains raw lifecycle/metric evidence plus a [reviewed operator diagnosis](docs/incidents/README.md) |
 | Operational visibility | JSON logs, job IDs, generated request IDs, liveness/readiness, process counters and authoritative PostgreSQL job-state gauges |
 | Optional tracing | W3C-correlated admission and durable-attempt spans through bounded OTLP/HTTP exporters; an opt-in Collector profile proves arrival without joining tracing to business health |
 | Verification | Unit and HTTP integration tests, race detector, fuzz target, real-binary SIGTERM smoke test, and real Go/PostgreSQL/Chromium operator workflow in GitHub Actions |
@@ -112,6 +112,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
 | `docs/roadmap.md` | Scope, milestones, acceptance criteria and interview evidence |
 | `docs/measurements/` | Reviewed controlled-run reports with commit-bound raw evidence and limitations |
+| `docs/incidents/` | Reviewed worker-crash evidence with GitHub artifact provenance, hashes and explicit limitations |
 | `docs/api.md` | Requests, responses, limits and error semantics |
 | `docs/runbook.md` | Demo steps, troubleshooting and operational limitations |
 | `docs/verification.md` | Observed local checks and verification limitations |
@@ -230,7 +231,10 @@ sends SIGKILL, and lets worker B recover the expired two-second lease. Validatio
 requires the lifecycle sequence `claim v1 → recovery fence v2 → reclaim v3 →
 success v3`, exit code 137 outside OOM handling, terminal attempt two and one
 observed recovery-worker attempt. CI preserves the raw JSON, metrics, container
-inspection, logs, report and SHA-256 manifest for 14 days.
+inspection, logs, report and SHA-256 manifest for 14 days. The first green bundle
+is also preserved under [`docs/incidents/899cce9/`](docs/incidents/899cce9/)
+after its GitHub ZIP digest, internal manifest, semantic evidence and
+deterministic report were reviewed.
 
 ## Limits and next milestones
 

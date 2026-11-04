@@ -108,6 +108,20 @@ sequence version 1 claim → version 2 recovery → version 3 reclaim/success. E
 incident. The command always removes its containers and volumes; CI retains the
 evidence bundle for 14 days.
 
+The first reviewed CI bundle is retained at `docs/incidents/899cce9/`. Verify
+its source binding, lifecycle semantics and exact manifest coverage without
+starting Docker:
+
+```sh
+python3 scripts/assert_incident.py docs/incidents/899cce9 \
+  --expected-commit 899cce9edf522f6ffba1591b54cdd8bda68d0e6e \
+  --verify-manifest
+```
+
+The ZIP digest and workflow/artifact links are recorded in
+`docs/incidents/README.md`. The internal manifest covers extracted files; it
+does not replace the outer GitHub artifact digest.
+
 ## Bounded load experiment
 
 Use `make load` for the default 100-request workload or pass explicit flags to
@@ -226,6 +240,6 @@ and results; use `GET /v1/jobs/{id}` for full detail.
 
 The workflow runs on PRs, main and feature-branch pushes, with read-only contents permission, pinned action commits and no secrets. It checks formatting, vet, race tests, a short fuzz run, static build, process smoke and container build. Dependabot tracks actions/Docker updates.
 
-Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads bounded measurement and worker-crash incident bundles from isolated durable stacks on each main push. The first reviewed measurement bundle is committed under `docs/measurements/`; review incident artifacts before preserving one under `docs/incidents/`.
+Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads bounded measurement and worker-crash incident bundles from isolated durable stacks on each main push. The first reviewed measurement bundle is committed under `docs/measurements/`; the first reviewed worker-crash bundle and its provenance are committed under `docs/incidents/`.
 
 Authentication, authorization, transport security and resource/connection limits are prerequisites for public hosting, outside the local demonstration's M1 scope.

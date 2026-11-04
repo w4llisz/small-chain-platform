@@ -17,6 +17,7 @@ ATTEMPT_COUNT_PATTERN = re.compile(
     r"^small_chain_worker_attempt_duration_seconds_count ([0-9]+(?:\.[0-9]+)?)$",
     re.MULTILINE,
 )
+MANIFEST_LINE_PATTERN = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
 
 
 @dataclass(frozen=True)
@@ -150,18 +151,67 @@ def write_manifest(directory: Path, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def verify_manifest(directory: Path, path: Path) -> int:
+    """Verify a flat evidence manifest and require exact file coverage."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise ValueError(f"read {path.name}: {error}") from error
+    if not lines:
+        raise ValueError("incident manifest is empty")
+
+    expected: dict[str, str] = {}
+    for line in lines:
+        match = MANIFEST_LINE_PATTERN.fullmatch(line)
+        if match is None:
+            raise ValueError("invalid incident manifest line")
+        digest, name = match.groups()
+        if name in {".", "..", path.name} or Path(name).name != name or "\\" in name:
+            raise ValueError(f"unsafe incident manifest path: {name}")
+        if name in expected:
+            raise ValueError(f"duplicate incident manifest path: {name}")
+        expected[name] = digest
+
+    actual: dict[str, Path] = {}
+    for candidate in directory.iterdir():
+        if candidate == path:
+            continue
+        if candidate.is_symlink() or not candidate.is_file():
+            raise ValueError(f"unsupported incident evidence entry: {candidate.name}")
+        actual[candidate.name] = candidate
+    missing = sorted(set(actual) - set(expected))
+    unexpected = sorted(set(expected) - set(actual))
+    if missing or unexpected:
+        raise ValueError(
+            f"incident manifest coverage mismatch: missing={missing}, unexpected={unexpected}"
+        )
+    for name, candidate in actual.items():
+        observed = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        if observed != expected[name]:
+            raise ValueError(f"incident manifest digest mismatch: {name}")
+    return len(actual)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", type=Path)
     parser.add_argument("--expected-commit", required=True)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--manifest", type=Path)
+    parser.add_argument(
+        "--verify-manifest",
+        action="store_true",
+        help="verify manifest.sha256 and require exact coverage of the evidence directory",
+    )
     arguments = parser.parse_args()
     incident = validate_incident(arguments.directory, arguments.expected_commit)
     if arguments.report:
         write_report(arguments.report, incident)
     if arguments.manifest:
         write_manifest(arguments.directory, arguments.manifest)
+    if arguments.verify_manifest:
+        count = verify_manifest(arguments.directory, arguments.directory / "manifest.sha256")
+        print(f"verified incident manifest for {count} files")
     print(f"validated worker crash recovery for job {incident.job_id}")
 
 

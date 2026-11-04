@@ -1,0 +1,1 @@
+{"id":"0757362e18fe3c6732e36ee9d02d7c8e","spec":{"kind":"demo.checksum","payload":"controlled worker crash","delay_ms":5000,"max_attempts":2,"timeout_ms":10000},"state":"succeeded","attempts":2,"result":"07ad7246ca31b018a1f10104763b833550c0fe8e0971252292caec16ec82e61e","created_at":"2026-11-03T10:14:30.088481Z","updated_at":"2026-11-03T10:14:38.722193Z"}

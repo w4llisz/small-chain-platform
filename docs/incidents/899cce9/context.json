@@ -1,0 +1,9 @@
+{
+  "job_id": "0757362e18fe3c6732e36ee9d02d7c8e",
+  "killed_owner": "incident-worker-a",
+  "payload_sha256": "07ad7246ca31b018a1f10104763b833550c0fe8e0971252292caec16ec82e61e",
+  "recovery_owner": "incident-worker-b",
+  "scenario": "worker-sigkill-recovery",
+  "schema_version": 1,
+  "source_commit": "899cce9edf522f6ffba1591b54cdd8bda68d0e6e"
+}

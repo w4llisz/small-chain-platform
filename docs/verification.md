@@ -485,4 +485,31 @@ the exactly-once limitation; its manifest covers every retained evidence file.
 Docker is unavailable in this local execution environment, so no local
 container-crash result is claimed. The independent main-push `incident` CI job
 is the real PostgreSQL/Compose acceptance gate and uploads its raw bundle for 14
-days. The first green artifact remains to be reviewed and preserved by M4.7b.
+days.
+
+## M4.7b reviewed worker-crash evidence — 2026-11-04
+
+[CI run #57](https://github.com/w4llisz/small-chain-platform/actions/runs/41617447374)
+passed all six jobs for commit `899cce9edf522f6ffba1591b54cdd8bda68d0e6e`.
+Artifact `13220904619` was downloaded through the authenticated GitHub account.
+Its ZIP SHA-256 was
+`1ff017a6573fc4a6fb5e785c5d71b42f8c1e37d45e0997ed895065f8d44dc7b8`,
+matching GitHub's recorded digest.
+
+The new manifest verifier recomputed every listed SHA-256, rejected unlisted or
+missing files and accepted exact coverage of the eight non-manifest files. The
+existing semantic validator accepted job `0757362e18fe3c6732e36ee9d02d7c8e`,
+SIGKILL exit 137 outside OOM handling, the version 1 → 2 → 3 fencing sequence,
+success on attempt two and one recovery-worker attempt. A regenerated report
+was byte-identical to the artifact `README.md`. Eight focused Python tests pass,
+including corruption and exact-coverage failures.
+
+Local Linux amd64 verification with Go 1.27.2 passed `make verify`,
+integration-tag compilation and vet, `go mod verify` and `git diff --check`.
+This review did not rerun Docker locally; CI run #57 is the source of the
+preserved real PostgreSQL/Compose result.
+
+The extracted bundle is preserved at `docs/incidents/899cce9/`. This review
+confirms one synthetic checksum recovery run and the integrity of its retained
+evidence. It does not establish exactly-once external effects, production
+availability, recovery-time guarantees or an SLO.

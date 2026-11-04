@@ -1,0 +1,6 @@
+NAME                                            IMAGE                        COMMAND                  SERVICE             CREATED          STATUS                       PORTS
+small-chain-incident-2392-api-1                 small-chain-platform:local   "/small-chain -addr=…"   api                 16 seconds ago   Up 9 seconds (healthy)       127.0.0.1:8080->8080/tcp, 9091/tcp
+small-chain-incident-2392-incident-worker-a-1   small-chain-platform:local   "/small-chain-worker…"   incident-worker-a   9 seconds ago    Exited (137) 7 seconds ago   
+small-chain-incident-2392-incident-worker-b-1   small-chain-platform:local   "/small-chain-worker…"   incident-worker-b   8 seconds ago    Up 6 seconds (healthy)       8080/tcp, 9091/tcp, 127.0.0.1:9093->9093/tcp
+small-chain-incident-2392-migrate-1             small-chain-platform:local   "/migrate"               migrate             9 seconds ago    Exited (0) 6 seconds ago     
+small-chain-incident-2392-postgres-1            postgres:16                  "docker-entrypoint.s…"   postgres            16 seconds ago   Up 15 seconds (healthy)      5432/tcp

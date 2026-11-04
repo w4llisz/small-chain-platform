@@ -666,3 +666,20 @@ checks the exact five-event sequence and terminal checksum, and renders a short
 operator diagnosis plus manifest. CI retains this synthetic incident bundle
 for 14 days. The checksum executor is idempotent; the drill does not extend the
 database fence to arbitrary external side effects or claim exactly-once work.
+
+## M4.7b: reviewed worker-crash evidence (implemented)
+
+CI run #57 produced the first green incident bundle from commit `899cce9`. Its
+downloaded ZIP digest matched GitHub's recorded SHA-256 before extraction. The
+repository preserves the eight hashed evidence inputs and their original
+manifest under `docs/incidents/899cce9/`; artifact metadata and review limits
+live in the parent index so the extracted bundle stays byte-identical.
+
+The incident validator now verifies the manifest as a second trust boundary. It
+accepts only flat, unique paths, requires exact coverage of every other file in
+the directory and recomputes each SHA-256. Semantic validation remains separate:
+it binds context to the expected commit and checks job state, checksum, process
+exit, metric and lifecycle fences. The generated diagnosis was also reproduced
+byte-for-byte. This layered review detects archive substitution, extracted-file
+corruption and internally valid evidence for the wrong revision without treating
+the synthetic task as production reliability evidence.

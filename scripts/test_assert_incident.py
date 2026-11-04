@@ -4,7 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.assert_incident import Incident, validate_incident, write_manifest, write_report
+from scripts.assert_incident import (
+    Incident,
+    validate_incident,
+    verify_manifest,
+    write_manifest,
+    write_report,
+)
 
 
 COMMIT = "1" * 40
@@ -90,6 +96,38 @@ class IncidentEvidenceTest(unittest.TestCase):
             self.assertIn("README.md", manifest_text)
             self.assertIn("events.json", manifest_text)
             self.assertNotIn("manifest.sha256", manifest_text)
+            self.assertEqual(verify_manifest(root, manifest), 2)
+
+    def test_manifest_rejects_changed_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = root / "events.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            manifest = root / "manifest.sha256"
+            write_manifest(root, manifest)
+            evidence.write_text('{"events": []}\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "digest mismatch: events.json"):
+                verify_manifest(root, manifest)
+
+    def test_manifest_requires_exact_file_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "events.json").write_text("{}\n", encoding="utf-8")
+            manifest = root / "manifest.sha256"
+            write_manifest(root, manifest)
+            (root / "unreviewed.log").write_text("new evidence\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing=\\['unreviewed.log'\\]"):
+                verify_manifest(root, manifest)
+
+    def test_manifest_rejects_nested_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "events.json").write_text("{}\n", encoding="utf-8")
+            manifest = root / "manifest.sha256"
+            write_manifest(root, manifest)
+            (root / "nested").mkdir()
+            with self.assertRaisesRegex(ValueError, "unsupported.*nested"):
+                verify_manifest(root, manifest)
 
 
 if __name__ == "__main__":
