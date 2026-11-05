@@ -513,3 +513,25 @@ The extracted bundle is preserved at `docs/incidents/899cce9/`. This review
 confirms one synthetic checksum recovery run and the integrity of its retained
 evidence. It does not establish exactly-once external effects, production
 availability, recovery-time guarantees or an SLO.
+
+## M4.8a portfolio evidence index — 2026-11-05
+
+The new `docs/evidence.md` maps eight implemented claims to core code,
+executable checks, reviewed runtime evidence and an explicit non-claim. Its
+completion checklist covers the accepted M4 scope: the durable Compose stack,
+metrics, optional tracing, reviewed measurement, reviewed worker-crash evidence
+and linked runbook claims.
+
+Two standard-library tests resolve more than 30 relative links, require every
+target to remain inside the repository, check the claim-table shape and retain
+the six-item completion checklist. This is navigation integrity, not a new
+runtime correctness result. The source baseline was commit `59ea876`, whose
+[CI #58](https://github.com/w4llisz/small-chain-platform/actions/runs/41818785830)
+passed all six jobs before this increment.
+
+Local Linux amd64 verification with Go 1.27.2 passed `make verify`: formatting,
+vet, race-enabled Go tests, all 14 Python tests, six static binaries and the
+real-process retry/idempotency/shutdown smoke. Integration-tagged packages also
+compiled and passed vet, `go mod verify` passed, and `git diff --check` was
+clean. No local Docker result is claimed for this documentation-only increment;
+the next main-push CI remains the real Compose/PostgreSQL/Chromium gate.

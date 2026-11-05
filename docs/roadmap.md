@@ -11,12 +11,12 @@ Target investment: roughly 45–60 focused hours for M1–M4, adjusted by progre
 | M1 — execution foundation (complete) | Go API, memory engine, bounded pool, retries, cancel, probes, metrics, tests/CI; 10–14 h | Concurrent same-key requests execute once; safe overload; immutable terminal results; signal drain/deadline cancellation | `make verify`, CI workflow, design decisions |
 | M2 — durable scheduling (complete) | PostgreSQL migrations, admission, leases, fenced completion, delayed retries, events/retention; 14–18 h | Jobs survive restart; two processes claim safely; killed worker recovers; stale completion rejected; retry budget survives crashes | DB integration tests, recovery script, query plans |
 | M3 — operator console (complete) | React/TypeScript, paginated/filterable list, details/events, cancel; 8–12 h | Find failures and causes; cancel queued/running tasks; loading/error states; Playwright workflow passes | 32 client/component tests and green real Go/PostgreSQL/Chromium CI run #43 |
-| M4 — operational evidence (in progress) | Compose demo, durable metrics, OpenTelemetry, dashboard, reproducible load/failure tests; 12–16 h | One-command stack; trace admission/attempts; runbook matches failures; measurements include hardware/commit/workload | Database-backed gauges first; benchmark report and incident write-up later |
+| M4 — operational evidence (complete) | Compose demo, durable metrics, OpenTelemetry, dashboard, reproducible load/failure tests; 12–16 h | One-command stack; trace admission/attempts; runbook matches failures; measurements include hardware/commit/workload | Reviewed measurement and incident bundles plus claim-to-evidence index |
 
-M1 is the runnable baseline, M2 is the completed durable platform core, and M3
-is the completed operator workflow. **M4 is the current priority:** add evidence
-that is generated from the real durable system without inventing production
-scale, latency or reliability claims.
+M1 is the runnable baseline, M2 is the completed durable platform core, M3 is
+the completed operator workflow, and M4 closes the planned portfolio scope with
+reviewed evidence from the real durable system. Further work should improve
+release clarity or fix observed defects rather than add another subsystem.
 
 ## Next PRs
 
@@ -54,7 +54,8 @@ scale, latency or reliability claims.
    - **M4.6b optional Collector evidence implemented:** the local `tracing` Compose profile starts a pinned Collector with loopback-only OTLP/health ports, a 128 MiB memory limiter and a rotating local JSON file sink. A fresh-project smoke first proves the default service set omits the Collector, then submits a real durable job and requires accepted admission plus succeeded attempt spans with the same job ID. The parser rejects payload, idempotency-key and worker-owner leakage; synthetic fixtures cover missing and sensitive evidence. Application readiness has no Collector dependency.
    - **M4.7a bounded worker-crash drill implemented:** an isolated Compose profile submits one controlled long-running task, waits for worker A's first fenced claim, sends SIGKILL, and lets worker B recover the expired lease and complete attempt two. An offline validator requires the exact claim v1 → recovery v2 → reclaim/success v3 event sequence, exit 137 without OOM, the terminal checksum and one recovery-worker attempt. CI retains raw lifecycle JSON, container inspection, metrics, logs, a deterministic operator diagnosis and hashes for 14 days. The drill reuses existing scheduling behavior and does not claim exactly-once external side effects.
    - **M4.7b first reviewed incident implemented:** all six jobs in CI run #57 passed. The downloaded artifact ZIP matched GitHub's SHA-256, its internal manifest covered and matched all eight evidence files, semantic validation passed and the regenerated diagnosis was byte-identical. The repository preserves the raw extracted evidence, artifact provenance and explicit limits under `docs/incidents/`; this remains one synthetic checksum recovery run, not an exactly-once or production-availability claim.
-   - **Next small task — M4.8a:** add one concise portfolio evidence index that maps each concurrency, durability, recovery and observability claim to its strongest code, test and reviewed artifact. Use it as the M4 completion checklist without adding another runtime subsystem.
+   - **M4.8a portfolio evidence index implemented:** `docs/evidence.md` maps bounded concurrency, durable idempotency, recovery/fencing, operator cancellation, lifecycle ownership, observability and measurement claims to their strongest code, tests and reviewed runtime evidence. Every row states a non-claim, and a standard-library test rejects missing or repository-escaping local links. The completed checklist closes M4 without adding another runtime subsystem.
+   - **Next small task — M5.1 release-candidate audit:** verify the documented quickstart from a fresh clone, consolidate any remaining version drift, and produce a bounded v0.1.0 release checklist. Fix only observed defects; do not expand runtime scope.
 
 ## Build on existing experience
 

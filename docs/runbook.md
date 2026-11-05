@@ -242,4 +242,8 @@ The workflow runs on PRs, main and feature-branch pushes, with read-only content
 
 Workflow configuration alone does not prove Actions or Docker passed. Check the real run before merging. M2 provisions PostgreSQL and runs a race-instrumented worker process kill/recovery test; M3 adds type checking/Playwright; M4 uploads bounded measurement and worker-crash incident bundles from isolated durable stacks on each main push. The first reviewed measurement bundle is committed under `docs/measurements/`; the first reviewed worker-crash bundle and its provenance are committed under `docs/incidents/`.
 
+For a claim-by-claim review path, use `docs/evidence.md`. Its local links are
+checked by `make verify`; the linked GitHub run is still the authority for
+whether real PostgreSQL, Chromium and Compose jobs passed for that revision.
+
 Authentication, authorization, transport security and resource/connection limits are prerequisites for public hosting, outside the local demonstration's M1 scope.

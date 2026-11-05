@@ -683,3 +683,18 @@ exit, metric and lifecycle fences. The generated diagnosis was also reproduced
 byte-for-byte. This layered review detects archive substitution, extracted-file
 corruption and internally valid evidence for the wrong revision without treating
 the synthetic task as production reliability evidence.
+
+## M4.8a: claim-to-evidence closure (implemented)
+
+The portfolio evidence index treats a feature claim as a review tuple: core
+implementation, executable check, retained runtime evidence and an explicit
+boundary. This prevents a green workflow or a single synthetic run from being
+presented without the code path it exercises or the limitation that constrains
+the conclusion.
+
+The index is deliberately a navigation layer rather than a new source of truth.
+It links to existing code, tests, CI runs and reviewed bundles. A standard-library
+test resolves every local link inside the repository and rejects path escape,
+while the completion checklist mirrors the accepted M4 scope. With the durable
+stack, console, tracing, measurement and failure drill all represented, M4 is
+complete without adding another service or scheduler feature.
