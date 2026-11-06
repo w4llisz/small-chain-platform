@@ -698,3 +698,18 @@ test resolves every local link inside the repository and rejects path escape,
 while the completion checklist mirrors the accepted M4 scope. With the durable
 stack, console, tracing, measurement and failure drill all represented, M4 is
 complete without adding another service or scheduler feature.
+
+## M5.1: release-candidate reproducibility (implemented)
+
+`.go-version` is the build-toolchain source for local review and every Go CI
+job. The Docker builder uses the same exact patch version; `go.mod` retains the
+Go 1.27.0 language compatibility floor. A repository test checks these three
+roles separately so a toolchain update cannot leave CI and the release image on
+different patch versions.
+
+The release checklist treats a tag as the output of one immutable candidate,
+not a rolling statement about `main`. Local checks prove source, race tests,
+static builds and the real memory-mode process; PostgreSQL, Chromium and Compose
+remain explicit CI gates. Every gate stays unchecked until the candidate's own
+workflow completes, preventing earlier evidence from being relabeled as the
+release result.

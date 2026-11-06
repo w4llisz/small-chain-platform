@@ -8,7 +8,7 @@ Submit a task through HTTP, observe its lifecycle, retry transient failures, and
 
 ## Try it in five minutes
 
-Prerequisites: Go 1.27.x; `make` and Python 3 for full verification. The race detector requires a C compiler. The M1 server uses the Go standard library; the optional PostgreSQL store uses pgx, pinned in `go.mod`/`go.sum`.
+Prerequisites: Go 1.27.3 (the exact build version is recorded in `.go-version`); `make` and Python 3 for full verification. The race detector requires a C compiler. The M1 server uses the Go standard library; the optional PostgreSQL store uses pgx, pinned in `go.mod`/`go.sum`.
 
 ```sh
 make verify       # formatting, vet, race tests, build, real-process smoke test
@@ -112,6 +112,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
 | `docs/roadmap.md` | Scope, milestones, acceptance criteria and interview evidence |
 | `docs/evidence.md` | Interview-ready map from each implemented claim to code, tests, runtime evidence and limits |
+| `docs/release-checklist.md` | Bounded v0.1.0 candidate gates, scope and release procedure |
 | `docs/measurements/` | Reviewed controlled-run reports with commit-bound raw evidence and limitations |
 | `docs/incidents/` | Reviewed worker-crash evidence with GitHub artifact provenance, hashes and explicit limitations |
 | `docs/api.md` | Requests, responses, limits and error semantics |
@@ -287,7 +288,7 @@ repeating the write. Closing the view cannot undo a committed cancellation.
 - PostgreSQL records all low-frequency lifecycle transitions but deliberately omits heartbeat renewals. Its event endpoint is PostgreSQL-only; retained events are deleted with their job during bounded terminal cleanup.
 - PostgreSQL job listing is also unavailable in memory mode. List pages are stable against newer inserts but are not a multi-request snapshot; retention can remove older rows between pages.
 
-The target portfolio release is a **Go + PostgreSQL job platform with a small React/TypeScript operations console**, backed by failure-recovery tests and reproducible measurements. Start review with the [portfolio evidence index](docs/evidence.md), then see [milestones](docs/roadmap.md) and [design decisions](docs/architecture.md).
+The target portfolio release is a **Go + PostgreSQL job platform with a small React/TypeScript operations console**, backed by failure-recovery tests and reproducible measurements. Start review with the [portfolio evidence index](docs/evidence.md), then see the [v0.1.0 release checklist](docs/release-checklist.md), [milestones](docs/roadmap.md) and [design decisions](docs/architecture.md).
 
 ## License
 

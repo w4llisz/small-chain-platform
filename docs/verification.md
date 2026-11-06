@@ -535,3 +535,27 @@ real-process retry/idempotency/shutdown smoke. Integration-tagged packages also
 compiled and passed vet, `go mod verify` passed, and `git diff --check` was
 clean. No local Docker result is claimed for this documentation-only increment;
 the next main-push CI remains the real Compose/PostgreSQL/Chromium gate.
+
+## M5.1 release-candidate audit — 2026-11-06
+
+The audit started from a new clone of remote `main` at `65b2a73`. Its
+[CI run #61](https://github.com/w4llisz/small-chain-platform/actions/runs/42012055645)
+had all six jobs green. The clone exposed one release defect: four Go CI jobs
+and the Docker builder independently pinned Go 1.27.1 while an already-green
+dependency PR proposed Docker Go 1.27.3. The candidate now records 1.27.3 once
+in `.go-version`; every Go CI job reads it, the Docker builder matches it and a
+standard-library test rejects future drift. The `go 1.27.0` module directive
+remains the language compatibility floor rather than pretending to be a build
+toolchain pin.
+
+On Linux amd64, an exact Go 1.27.3 toolchain completed `make verify`: formatting,
+vet, race-enabled Go tests, all 16 Python repository tests, six static binaries
+and the real-process retry/idempotency/shutdown smoke passed. `go mod verify`
+passed. PostgreSQL-tagged packages compiled and passed vet; those commands did
+not execute database cases because no local database was supplied.
+
+The v0.1.0 checklist freezes scope, records seven candidate gates and leaves all
+seven unchecked until one immutable commit passes. Docker is unavailable in
+this local environment, so no local image, PostgreSQL, Chromium, measurement or
+incident result is claimed. The candidate's main-push workflow remains the
+authoritative real-stack gate.
