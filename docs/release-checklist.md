@@ -17,6 +17,17 @@ The release does not claim authenticated multi-tenancy, TLS termination,
 exactly-once external effects, multi-region failover, production availability,
 an SLO, or performance outside the retained synthetic experiments.
 
+## Reviewed dependency floor
+
+The release candidate requires pgx v5.12.0 or later. Version 5.12.0 fixes the
+upstream [simple-protocol batch injection advisory](https://github.com/jackc/pgx/security/advisories/GHSA-j38q-h3ph-jjpq)
+and [authentication/channel-binding advisory](https://github.com/jackc/pgx/security/advisories/GHSA-95fj-3fxw-g62g).
+Small Chain does not call `SendBatch`, select simple-protocol batches, implement
+`BatchResults`, or configure `require_auth`/required channel binding. The floor
+still prevents a later release edit from silently restoring a dependency with
+known high-impact defects. Future pgx upgrades must repeat the PostgreSQL,
+process-recovery and main-branch CI gates rather than relying on this review.
+
 ## Fresh-clone candidate check
 
 Run from a new directory so ignored build output and cached repository state

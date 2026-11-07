@@ -559,3 +559,27 @@ seven unchecked until one immutable commit passes. Docker is unavailable in
 this local environment, so no local image, PostgreSQL, Chromium, measurement or
 incident result is claimed. The candidate's main-push workflow remains the
 authoritative real-stack gate.
+
+## M5.2 pgx dependency release gate — 2026-11-07
+
+The review started from remote `main` at `a6b69a2`; its
+[CI run #62](https://github.com/w4llisz/small-chain-platform/actions/runs/42204748540)
+had all six jobs green. Dependabot PR #6 was based on the older `59ea876`
+revision, so its green checks were treated as supporting evidence rather than
+reused as acceptance for the current release candidate.
+
+pgx v5.12.0 fixes upstream high-severity issues in simple-protocol batches and
+required authentication/channel binding. A repository search found no
+`SendBatch`, simple-protocol selection, custom `BatchResults`, `require_auth`,
+or required-channel-binding use. The module update still removes the affected
+v5.11.0 library from the durable database boundary, upgrades `puddle` from
+v2.2.2 to v2.2.3, and adds a standard-library test that rejects a future pgx
+downgrade below v5.12.0.
+
+On Linux amd64 with Go 1.27.3, `make verify` passed formatting, vet, all
+race-enabled Go tests, 17 Python repository tests, six static binaries and the
+real-process retry/idempotency/shutdown smoke. `go mod verify` passed, and the
+PostgreSQL-tagged packages compiled and passed vet. No local PostgreSQL or
+Docker service was available, so no local database, Compose, Chromium or
+worker-SIGKILL result is claimed; the main-push workflow remains the real-stack
+acceptance gate for this dependency revision.

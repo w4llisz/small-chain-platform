@@ -46,6 +46,19 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertIn("exactly-once external effects", checklist)
         self.assertIn("provisions no cloud resources", checklist)
 
+    def test_pgx_security_floor(self):
+        go_mod = (ROOT / "go.mod").read_text(encoding="utf-8")
+        match = re.search(
+            r"(?m)^\s*github\.com/jackc/pgx/v5 v(\d+)\.(\d+)\.(\d+)$",
+            go_mod,
+        )
+        self.assertIsNotNone(match)
+        version = tuple(int(part) for part in match.groups())
+        self.assertGreaterEqual(version, (5, 12, 0))
+
+        go_sum = (ROOT / "go.sum").read_text(encoding="utf-8")
+        self.assertNotIn("github.com/jackc/pgx/v5 v5.11.0 ", go_sum)
+
 
 if __name__ == "__main__":
     unittest.main()

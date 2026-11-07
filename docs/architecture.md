@@ -713,3 +713,18 @@ static builds and the real memory-mode process; PostgreSQL, Chromium and Compose
 remain explicit CI gates. Every gate stays unchecked until the candidate's own
 workflow completes, preventing earlier evidence from being relabeled as the
 release result.
+
+## M5.2: dependency release gate (implemented)
+
+The pgx v5.12.0 review treats a dependency update as a change to the durable
+platform boundary. The repository does not use the changed `BatchResults`
+interface or the vulnerable simple-protocol batch path, and local demo DSNs do
+not claim authenticated production transport. The upgrade is still required
+because pgx owns connection authentication, query transport and pool behavior
+under every PostgreSQL state transition.
+
+The module graph moves only pgx v5.11.0 to v5.12.0 and its pool dependency
+`puddle` v2.2.2 to v2.2.3. A repository contract rejects pgx versions below the
+reviewed security floor. Race tests and integration-tag compilation provide the
+local compatibility gate; the real PostgreSQL concurrency, API restart,
+worker-SIGKILL recovery and Chromium workflow remain main-branch CI gates.
