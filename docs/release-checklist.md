@@ -4,6 +4,12 @@ This checklist turns the current portfolio scope into a reviewable release
 decision. It does not declare v0.1.0 released: every unchecked gate must be
 completed against the exact commit that will be tagged.
 
+## Preparation gates
+
+- [x] The pgx v5.12.0 security-floor decision and compatibility review are recorded below.
+- [x] [`docs/evidence.md`](evidence.md) and [`docs/verification.md`](verification.md) identify the strongest evidence and its limits.
+- [x] [Candidate release notes](releases/v0.1.0.md) describe memory and PostgreSQL modes, compatibility, local-only credentials and the unauthenticated demo boundary.
+
 ## Frozen scope
 
 The candidate contains the bounded memory engine, PostgreSQL scheduling and
@@ -50,14 +56,11 @@ tagged integration command compiles database-only test paths without claiming
 to execute PostgreSQL. A clean final status proves the checks did not edit the
 candidate.
 
-## Candidate gates
+## Immutable candidate gates
 
-- [ ] The candidate is the current `origin/main` commit and the tracked tree is clean.
+- [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
 - [ ] The fresh-clone commands above pass with the Go version in `.go-version`.
 - [ ] The main-branch CI run for that exact commit passes `verify`, `postgres`, `web`, `e2e`, `measurement`, and `incident`.
-- [ ] Open dependency PRs are either merged after their own checks or explicitly deferred; none is silently folded into the release.
-- [ ] [`docs/evidence.md`](evidence.md) and [`docs/verification.md`](verification.md) identify the strongest evidence and its limits.
-- [ ] Release notes describe the memory default, opt-in PostgreSQL mode, local-only Compose credentials, and unauthenticated demo boundary.
 - [ ] No credentials, generated artifacts, binaries, coverage output, or dirty measurement bundles are tracked.
 
 ## Tag and publish

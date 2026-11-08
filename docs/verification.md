@@ -583,3 +583,29 @@ PostgreSQL-tagged packages compiled and passed vet. No local PostgreSQL or
 Docker service was available, so no local database, Compose, Chromium or
 worker-SIGKILL result is claimed; the main-push workflow remains the real-stack
 acceptance gate for this dependency revision.
+
+## M5.3 release notes and preparation closure — 2026-11-08
+
+This increment started from remote `main` at `9cd820a`; its
+[CI run #63](https://github.com/w4llisz/small-chain-platform/actions/runs/42365099417)
+had all six jobs green. GitHub showed no open pull request, tag or published
+release. The v0.1.0 candidate notes now derive their scope, run modes,
+compatibility, migration path, verification evidence and deployment boundaries
+from repository sources instead of treating a future release description as a
+new capability claim.
+
+The release checklist now separates three completed preparation checks from
+four immutable-candidate checks. The latter intentionally stay open: selecting
+and attesting an exact release commit must happen only after that commit's own
+six-job main workflow is green. A standard-library contract test resolves every
+relative release-note link inside the repository and rejects unsupported
+availability, exactly-once and production-readiness wording.
+
+On Linux amd64 with Go 1.27.3, `make verify` passed formatting, vet, all
+race-enabled Go tests, 18 Python repository tests, six static binaries and the
+real-process retry/idempotency/shutdown smoke. `go mod verify` passed, and the
+PostgreSQL-tagged packages compiled and passed vet. No local PostgreSQL or
+Docker service was available, so no local database, Compose, Chromium,
+measurement or incident result is claimed. No tag or GitHub release was created;
+the new commit's main workflow is the acceptance gate for this documentation
+and contract-test increment.

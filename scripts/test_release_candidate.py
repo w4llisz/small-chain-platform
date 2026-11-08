@@ -1,9 +1,12 @@
 import re
 import unittest
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.0.md"
+LINK_PATTERN = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
 
 
 class ReleaseCandidateTest(unittest.TestCase):
@@ -35,16 +38,54 @@ class ReleaseCandidateTest(unittest.TestCase):
         for heading in (
             "## Frozen scope",
             "## Fresh-clone candidate check",
-            "## Candidate gates",
+            "## Preparation gates",
+            "## Immutable candidate gates",
             "## Tag and publish",
         ):
             self.assertIn(heading, checklist)
-        self.assertEqual(checklist.count("- [ ] "), 7)
-        self.assertNotIn("- [x] ", checklist)
+        self.assertEqual(checklist.count("- [x] "), 3)
+        self.assertEqual(checklist.count("- [ ] "), 4)
         self.assertIn(f'test "$(cat .go-version)" = "{version}"', checklist)
         self.assertIn("does not declare v0.1.0 released", checklist)
         self.assertIn("exactly-once external effects", checklist)
         self.assertIn("provisions no cloud resources", checklist)
+
+    def test_release_notes_are_bounded_and_links_resolve(self):
+        notes = RELEASE_NOTES.read_text(encoding="utf-8")
+        for heading in (
+            "## Highlights",
+            "## Run modes and upgrade notes",
+            "## Compatibility and dependency review",
+            "## Verification evidence",
+            "## Security and deployment boundaries",
+            "## Release decision",
+        ):
+            self.assertIn(heading, notes)
+
+        self.assertIn("v0.1.0 is not tagged or published", notes)
+        self.assertRegex(notes, r"the eventual tag\s+commit must pass its own workflow")
+        self.assertIn("at-least-once execution semantics", notes)
+        self.assertIn("cannot determine readiness", notes)
+
+        local_links = []
+        for target in LINK_PATTERN.findall(notes):
+            parsed = urlsplit(target)
+            if parsed.scheme in {"http", "https"}:
+                continue
+            self.assertEqual(parsed.scheme, "", f"unsupported link scheme: {target}")
+            self.assertEqual(parsed.netloc, "", f"unexpected link host: {target}")
+            path = (RELEASE_NOTES.parent / unquote(parsed.path)).resolve()
+            self.assertTrue(path.is_relative_to(ROOT), f"link escapes repository: {target}")
+            self.assertTrue(path.exists(), f"release-note link does not exist: {target}")
+            local_links.append(path)
+        self.assertGreaterEqual(len(local_links), 6)
+
+        for forbidden in (
+            "production-ready",
+            "guarantees exactly-once",
+            "99.9% availability",
+        ):
+            self.assertNotIn(forbidden, notes)
 
     def test_pgx_security_floor(self):
         go_mod = (ROOT / "go.mod").read_text(encoding="utf-8")

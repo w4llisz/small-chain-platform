@@ -728,3 +728,18 @@ The module graph moves only pgx v5.11.0 to v5.12.0 and its pool dependency
 reviewed security floor. Race tests and integration-tag compilation provide the
 local compatibility gate; the real PostgreSQL concurrency, API restart,
 worker-SIGKILL recovery and Chromium workflow remain main-branch CI gates.
+
+## M5.3: release communication boundary (implemented)
+
+The candidate release notes are derived from the same implementation, test and
+runtime-evidence layers as the portfolio index. They state run modes, migration
+position, exact toolchains and security floors alongside deployment limits, so
+the release summary cannot silently turn a synthetic demonstration into a
+production claim. A repository test validates required sections and local
+evidence links.
+
+Release preparation and release selection are separate states. Documentation,
+dependency disposition and evidence navigation can be completed before a
+candidate is chosen. Clean-tree, fresh-clone and exact-SHA CI gates remain
+unchecked until the commit to be tagged is immutable. This avoids a self-stale
+attestation where committing the claimed result would create a different SHA.
