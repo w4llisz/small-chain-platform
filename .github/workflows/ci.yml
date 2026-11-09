@@ -172,3 +172,29 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 9
+
+  candidate-attestation:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [web, e2e, verify, postgres, measurement, incident]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Generate commit-bound candidate attestation
+        run: >-
+          python3 scripts/release_attestation.py
+          --sha "$GITHUB_SHA"
+          --run-id "$GITHUB_RUN_ID"
+          --repository "$GITHUB_REPOSITORY"
+          --ref "$GITHUB_REF"
+          --output artifacts/release-candidate/attestation.json
+      - name: Preserve candidate attestation
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-${{ github.sha }}
+          path: artifacts/release-candidate/attestation.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9

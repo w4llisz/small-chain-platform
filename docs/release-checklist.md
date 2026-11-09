@@ -56,11 +56,18 @@ tagged integration command compiles database-only test paths without claiming
 to execute PostgreSQL. A clean final status proves the checks did not edit the
 candidate.
 
+On a `main` push, `candidate-attestation` runs only after `verify`, `postgres`,
+`web`, `e2e`, `measurement`, and `incident` succeed. It checks the exact
+`GITHUB_SHA`, a clean checkout, and tracked-path deny rules before uploading
+`candidate-<sha>` with the commit and workflow run URLs. These path rules catch
+the repository's generated output plus common private-key and credential-file
+names; they are not a general secret scanner.
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
 - [ ] The fresh-clone commands above pass with the Go version in `.go-version`.
-- [ ] The main-branch CI run for that exact commit passes `verify`, `postgres`, `web`, `e2e`, `measurement`, and `incident`.
+- [ ] The main-branch CI run for that exact commit passes `verify`, `postgres`, `web`, `e2e`, `measurement`, and `incident`, then uploads its successful `candidate-<sha>` attestation.
 - [ ] No credentials, generated artifacts, binaries, coverage output, or dirty measurement bundles are tracked.
 
 ## Tag and publish

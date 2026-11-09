@@ -743,3 +743,18 @@ dependency disposition and evidence navigation can be completed before a
 candidate is chosen. Clean-tree, fresh-clone and exact-SHA CI gates remain
 unchecked until the commit to be tagged is immutable. This avoids a self-stale
 attestation where committing the claimed result would create a different SHA.
+
+## M5.4: commit-bound candidate attestation (implemented)
+
+The main workflow has a final `candidate-attestation` job whose dependency list
+contains all six evidence jobs. GitHub schedules it only when those jobs
+succeed on a `main` push. A fresh checkout then verifies that `HEAD` equals
+`GITHUB_SHA`, the tracked tree is clean and repository-specific generated or
+credential-like paths are not tracked. The resulting deterministic JSON binds
+the candidate SHA to its workflow run and is uploaded as `candidate-<sha>`.
+
+The artifact solves the self-stale documentation problem: no follow-up commit
+is needed to claim that a different SHA passed. It is provenance within GitHub
+Actions, not a cryptographic signature, content-level secret scan or permission
+to publish a release. Tagging remains a separate decision after the artifact is
+independently reviewed.

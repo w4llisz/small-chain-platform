@@ -609,3 +609,29 @@ Docker service was available, so no local database, Compose, Chromium,
 measurement or incident result is claimed. No tag or GitHub release was created;
 the new commit's main workflow is the acceptance gate for this documentation
 and contract-test increment.
+
+## M5.4 commit-bound candidate attestation — 2026-11-09
+
+This increment started from remote `main` at `e6a1364`; its
+[CI run #64](https://github.com/w4llisz/small-chain-platform/actions/runs/42470925573)
+passed `verify`, `postgres`, `web`, `e2e`, `measurement`, and `incident`.
+GitHub showed no open pull request. No tag or published release existed when
+the increment started.
+
+The workflow now adds `candidate-attestation` after those six jobs. In its own
+fresh checkout the generator requires `HEAD == GITHUB_SHA`, a clean tracked
+tree and no tracked repository-generated paths or common credential/private-key
+file names. It emits deterministic JSON containing the candidate repository,
+ref, SHA, commit URL, run ID, run URL, required jobs and tracked-file count, then
+uploads `candidate-<sha>` for 30 days. The generator checks paths and Git state;
+it does not inspect every file for secrets or provide a cryptographic signature.
+
+On Linux amd64 with Go 1.27.3, `make verify` passed formatting, vet, all
+race-enabled Go tests, 23 Python repository tests, six static binaries and the
+real-process retry/idempotency/shutdown smoke. `go mod verify` passed, and the
+PostgreSQL-tagged packages compiled and passed vet. No local PostgreSQL or
+Docker service was available, so no local database, Compose, browser or
+candidate-artifact result is claimed. The new commit's GitHub workflow is
+authoritative for the dependency ordering and uploaded candidate artifact.
+This increment does not create a tag, GitHub Release, deployment or cloud
+resource.

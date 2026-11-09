@@ -114,6 +114,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `docs/evidence.md` | Interview-ready map from each implemented claim to code, tests, runtime evidence and limits |
 | `docs/release-checklist.md` | Bounded v0.1.0 candidate gates, scope and release procedure |
 | `docs/releases/v0.1.0.md` | Candidate release notes, compatibility, upgrade path and deployment limits |
+| `scripts/release_attestation.py` | Clean-checkout, exact-SHA release provenance generated after all evidence jobs pass |
 | `docs/measurements/` | Reviewed controlled-run reports with commit-bound raw evidence and limitations |
 | `docs/incidents/` | Reviewed worker-crash evidence with GitHub artifact provenance, hashes and explicit limitations |
 | `docs/api.md` | Requests, responses, limits and error semantics |
