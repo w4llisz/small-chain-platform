@@ -635,3 +635,30 @@ candidate-artifact result is claimed. The new commit's GitHub workflow is
 authoritative for the dependency ordering and uploaded candidate artifact.
 This increment does not create a tag, GitHub Release, deployment or cloud
 resource.
+
+## M5.5 reviewed candidate attestation — 2026-11-10
+
+This review started from a fresh clone of remote `main` at `a401fe1`. Its
+[CI run #65](https://github.com/w4llisz/small-chain-platform/actions/runs/42605311933)
+passed all six evidence jobs and the dependent `candidate-attestation` job.
+GitHub showed no open pull request, tag or published release.
+
+Artifact `13667377873` was downloaded through the authorized GitHub account.
+The original ZIP SHA-256 matched GitHub's recorded
+`2f50ab2ddcaabbee1e73fafb6529280aef313e91b43d3a2de91641792d37a162`.
+It contained only a regular, unencrypted, non-symlink `attestation.json` entry.
+The new offline verifier accepted its canonical schema and exact repository,
+main-ref, commit, run, required-job and clean-source binding. The raw JSON is
+preserved under `docs/releases/a401fe1/` with review metadata and limitations.
+
+On Linux amd64 with Go 1.27.3, `make verify` passed formatting, vet, all
+race-enabled Go tests, 30 Python repository tests, six static binaries and the
+real-process retry/idempotency/shutdown smoke. `go mod verify` passed, and the
+PostgreSQL-tagged packages compiled and passed vet. The verifier also accepted
+the real downloaded artifact. No local PostgreSQL or Docker service was
+available, so no new local database, Compose or browser result is claimed.
+
+The verifier establishes artifact integrity and provenance, not a signature,
+general secret scan, production-readiness result or permission to tag. This
+review commit advances `main`; therefore the historical `a401fe1` snapshot is
+not a tag candidate after this commit lands.

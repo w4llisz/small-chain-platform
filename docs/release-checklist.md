@@ -63,6 +63,14 @@ On a `main` push, `candidate-attestation` runs only after `verify`, `postgres`,
 the repository's generated output plus common private-key and credential-file
 names; they are not a general secret scanner.
 
+Before selecting a tag, independently download the unextracted
+`candidate-<sha>` ZIP and run `scripts/verify_release_attestation.py` with the
+digest GitHub records for that artifact, the intended SHA and its workflow run
+ID. The verifier requires one canonical `attestation.json`, rejects archive
+substitution, extra entries and symlinks, and checks the exact commit/run
+binding. The first reviewed example is preserved under
+[`docs/releases/a401fe1/`](releases/a401fe1/).
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.

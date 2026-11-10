@@ -758,3 +758,19 @@ is needed to claim that a different SHA passed. It is provenance within GitHub
 Actions, not a cryptographic signature, content-level secret scan or permission
 to publish a release. Tagging remains a separate decision after the artifact is
 independently reviewed.
+
+## M5.5: independent candidate-artifact review (implemented)
+
+Artifact consumption is a separate trust boundary from artifact generation.
+The offline verifier first hashes the original ZIP against GitHub's recorded
+digest, then requires one bounded regular `attestation.json` entry, rejects
+encryption, symlinks and extra files, and enforces deterministic JSON. Strict
+schema checks bind repository, main ref, candidate SHA, workflow run, required
+jobs and clean-source claims to reviewer-supplied expectations.
+
+The first reviewed artifact is preserved as raw JSON with its GitHub artifact
+ID, ZIP digest, source run and explicit limitations. This provides durable
+evidence after Actions retention expires without treating a repository copy as
+the source of the GitHub digest. A review proves integrity and provenance for
+one historical commit; advancing `main` requires a new candidate artifact and
+does not implicitly authorize a tag or release.
