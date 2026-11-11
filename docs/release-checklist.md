@@ -71,12 +71,23 @@ substitution, extra entries and symlinks, and checks the exact commit/run
 binding. The first reviewed example is preserved under
 [`docs/releases/a401fe1/`](releases/a401fe1/).
 
+After `candidate-attestation` succeeds, the dependent `release-bundle` job
+builds `small-chain-platform-v0.1.0-linux-amd64.tar.gz` from the same clean
+checkout. The archive has a fixed root and contains only the API, worker,
+migration and healthcheck binaries, `LICENSE`, candidate release notes,
+canonical build metadata and `SHA256SUMS`. Its verifier rejects unexpected
+entries, links, unsafe paths, wrong modes, incomplete hashes, a mismatched
+commit and binaries whose embedded Go package/module/target metadata differs.
+The bundle is a dry-run artifact retained for 30 days; it does not create a tag
+or GitHub Release.
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
 - [ ] The fresh-clone commands above pass with the Go version in `.go-version`.
 - [ ] The main-branch CI run for that exact commit passes `verify`, `postgres`, `web`, `e2e`, `measurement`, and `incident`, then uploads its successful `candidate-<sha>` attestation.
 - [ ] No credentials, generated artifacts, binaries, coverage output, or dirty measurement bundles are tracked.
+- [ ] The dependent release-bundle job verifies and uploads the exact candidate's bounded Linux amd64 archive.
 
 ## Tag and publish
 

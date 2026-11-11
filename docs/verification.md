@@ -662,3 +662,28 @@ The verifier establishes artifact integrity and provenance, not a signature,
 general secret scan, production-readiness result or permission to tag. This
 review commit advances `main`; therefore the historical `a401fe1` snapshot is
 not a tag candidate after this commit lands.
+
+## M5.6 bounded release-bundle dry run — 2026-11-11
+
+This increment started from remote `main` at `f753eea`; its
+[CI run #66](https://github.com/w4llisz/small-chain-platform/actions/runs/42804213067)
+passed the six evidence jobs and `candidate-attestation`, and GitHub showed no
+open pull request. The new dependent job waits for that attestation, builds the
+four operational Linux amd64 binaries from the same clean SHA and uploads one
+30-day dry-run archive without creating a tag or GitHub Release.
+
+The standard-library builder fixes gzip/tar timestamps, entry order, ownership
+and modes. Its verifier enforces the exact eight-file layout, a 64 MiB archive
+and 128 MiB expanded bound, regular-file-only entries, canonical commit and
+toolchain metadata, complete SHA-256 coverage, and embedded Go package, module,
+CGO, GOOS and GOARCH values for every binary. Synthetic tests cover
+deterministic output, commit substitution, hash corruption, extra entries,
+symbolic links and module substitution.
+
+On Linux amd64 with Go 1.27.3, `make verify` passed formatting, vet, all
+race-enabled Go tests, 39 Python repository tests, six static binaries and the
+real-process retry/idempotency/shutdown smoke. `go mod verify` passed, and the
+PostgreSQL-tagged packages compiled and passed vet. No local Docker or
+PostgreSQL service was available, so no local database, Compose, browser or
+packaged-runtime result is claimed; the main workflow builds the exact remote
+bundle and remains authoritative for real-stack and artifact-upload evidence.

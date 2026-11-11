@@ -20,7 +20,7 @@ class ReleaseCandidateTest(unittest.TestCase):
 
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         setup_go_steps = workflow.count("actions/setup-go@")
-        self.assertEqual(setup_go_steps, 4)
+        self.assertEqual(setup_go_steps, 5)
         self.assertEqual(workflow.count("go-version-file: '.go-version'"), setup_go_steps)
         self.assertNotRegex(workflow, r"(?m)^\s+go-version:\s")
 
@@ -44,7 +44,7 @@ class ReleaseCandidateTest(unittest.TestCase):
         ):
             self.assertIn(heading, checklist)
         self.assertEqual(checklist.count("- [x] "), 3)
-        self.assertEqual(checklist.count("- [ ] "), 4)
+        self.assertEqual(checklist.count("- [ ] "), 5)
         self.assertIn(f'test "$(cat .go-version)" = "{version}"', checklist)
         self.assertIn("does not declare v0.1.0 released", checklist)
         self.assertIn("exactly-once external effects", checklist)

@@ -774,3 +774,18 @@ evidence after Actions retention expires without treating a repository copy as
 the source of the GitHub digest. A review proves integrity and provenance for
 one historical commit; advancing `main` requires a new candidate artifact and
 does not implicitly authorize a tag or release.
+
+## M5.6: bounded release-bundle dry run (implemented)
+
+The release archive is built only after the commit-bound candidate attestation
+job succeeds. Four statically linked Linux amd64 binaries are compiled from the
+same checkout with the repository's exact Go patch version, no VCS stamping and
+trimmed source paths. The archive adds only the license, candidate notes,
+canonical commit/toolchain/target metadata and a complete SHA-256 manifest.
+
+Archive production fixes gzip and tar timestamps, ownership, modes, entry order
+and root name. Consumption is fail closed: one unexpected or linked entry,
+unsafe path, expanded-size overflow, noncanonical metadata, missing hash or
+wrong embedded Go module/package/target rejects the bundle. This is a packaging
+and supply-chain boundary, not a new runtime service. Uploading the dry-run
+artifact neither tags the commit nor signs or publishes a GitHub Release.

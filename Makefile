@@ -1,12 +1,16 @@
 GO ?= go
 GOFMT ?= gofmt
+RELEASE_VERSION ?= v0.1.0
+RELEASE_REPOSITORY ?= w4llisz/small-chain-platform
+RELEASE_SHA ?= $(shell git rev-parse HEAD)
+RELEASE_ARCHIVE ?= artifacts/release-bundle/small-chain-platform-$(RELEASE_VERSION)-linux-amd64.tar.gz
 .DEFAULT_GOAL := run
 
 .PHONY: web-verify
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose
+.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose release-bundle
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -83,3 +87,10 @@ incident-compose:
 
 measure-compose:
 	bash scripts/measure-compose.sh
+
+release-bundle:
+	python3 scripts/release_bundle.py build \
+		--archive "$(RELEASE_ARCHIVE)" \
+		--repository "$(RELEASE_REPOSITORY)" \
+		--sha "$(RELEASE_SHA)" \
+		--version "$(RELEASE_VERSION)"
