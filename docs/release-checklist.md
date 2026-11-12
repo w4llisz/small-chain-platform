@@ -81,6 +81,13 @@ commit and binaries whose embedded Go package/module/target metadata differs.
 The bundle is a dry-run artifact retained for 30 days; it does not create a tag
 or GitHub Release.
 
+The dependent `packaged-smoke` job downloads that retained archive rather than
+rebuilding it. Without a Go setup step, it safely expands the fixed layout into
+a new directory, runs the packaged memory API with an empty `PATH`, probes it
+with the packaged healthcheck, completes a retrying checksum job and requires a
+zero exit after SIGTERM. Its commit-bound `packaged-smoke-<sha>` JSON evidence
+is retained for 30 days. PostgreSQL package execution is outside this gate.
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
@@ -88,6 +95,7 @@ or GitHub Release.
 - [ ] The main-branch CI run for that exact commit passes `verify`, `postgres`, `web`, `e2e`, `measurement`, and `incident`, then uploads its successful `candidate-<sha>` attestation.
 - [ ] No credentials, generated artifacts, binaries, coverage output, or dirty measurement bundles are tracked.
 - [ ] The dependent release-bundle job verifies and uploads the exact candidate's bounded Linux amd64 archive.
+- [ ] The packaged-smoke job downloads that exact archive and passes healthcheck, checksum/retry and graceful SIGTERM checks without a Go toolchain runtime path.
 
 ## Tag and publish
 

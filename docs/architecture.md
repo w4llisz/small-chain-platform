@@ -789,3 +789,20 @@ unsafe path, expanded-size overflow, noncanonical metadata, missing hash or
 wrong embedded Go module/package/target rejects the bundle. This is a packaging
 and supply-chain boundary, not a new runtime service. Uploading the dry-run
 artifact neither tags the commit nor signs or publishes a GitHub Release.
+
+## M5.7: packaged runtime boundary (implemented)
+
+The `packaged-smoke` job depends on `release-bundle` and downloads that job's
+uploaded archive by run ID and commit-bound artifact name. It has no Go setup
+step. The consumer repeats the bounded regular-file, canonical metadata and
+SHA-256 checks before writing fixed paths into a newly created directory; it
+never calls `tar.extract` on archive-controlled paths.
+
+The runtime subprocess receives an empty `PATH`, isolated home and temporary
+directories, invalid Go cache/root locations and a working directory containing
+only the package plus smoke diagnostics. The packaged API must become ready
+through the packaged healthcheck, retry and finish a checksum job, then emit
+draining/stopped events and exit zero after SIGTERM. Commit, archive digest and
+outcome are retained as `packaged-smoke-<sha>` JSON for 30 days. This gate
+exercises the Linux amd64 memory-mode package; PostgreSQL migration/worker
+execution remains a planned package-level gate.

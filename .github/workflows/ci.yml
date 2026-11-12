@@ -222,3 +222,34 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+  packaged-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [release-bundle]
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Download the verified candidate archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          timeout 60s gh run download "$GITHUB_RUN_ID"
+          --repo "$GITHUB_REPOSITORY"
+          --name "release-bundle-$GITHUB_SHA"
+          --dir artifacts/release-bundle
+      - name: Exercise packaged binaries without a Go toolchain
+        run: make release-bundle-smoke RELEASE_SHA="$GITHUB_SHA"
+      - name: Preserve packaged-runtime evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packaged-smoke-${{ github.sha }}
+          path: artifacts/release-bundle-smoke/evidence.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9

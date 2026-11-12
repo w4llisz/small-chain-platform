@@ -10,7 +10,7 @@ RELEASE_ARCHIVE ?= artifacts/release-bundle/small-chain-platform-$(RELEASE_VERSI
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose release-bundle
+.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose release-bundle release-bundle-smoke
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -94,3 +94,11 @@ release-bundle:
 		--repository "$(RELEASE_REPOSITORY)" \
 		--sha "$(RELEASE_SHA)" \
 		--version "$(RELEASE_VERSION)"
+
+release-bundle-smoke:
+	python3 scripts/release_bundle_smoke.py \
+		--archive "$(RELEASE_ARCHIVE)" \
+		--repository "$(RELEASE_REPOSITORY)" \
+		--sha "$(RELEASE_SHA)" \
+		--version "$(RELEASE_VERSION)" \
+		--evidence artifacts/release-bundle-smoke/evidence.json

@@ -117,6 +117,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `scripts/release_attestation.py` | Clean-checkout, exact-SHA release provenance generated after all evidence jobs pass |
 | `scripts/verify_release_attestation.py` | Offline artifact digest, archive-shape and commit/run binding verification |
 | `scripts/release_bundle.py` | Deterministic Linux amd64 candidate build, fixed-layout verification and embedded Go metadata checks |
+| `scripts/release_bundle_smoke.py` | Source-free package extraction, packaged healthcheck/job execution and graceful SIGTERM evidence |
 | `docs/measurements/` | Reviewed controlled-run reports with commit-bound raw evidence and limitations |
 | `docs/incidents/` | Reviewed worker-crash evidence with GitHub artifact provenance, hashes and explicit limitations |
 | `docs/api.md` | Requests, responses, limits and error semantics |
