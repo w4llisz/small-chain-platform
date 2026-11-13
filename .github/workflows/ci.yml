@@ -253,3 +253,50 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
+
+  packaged-postgres-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [packaged-smoke]
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: small_chain
+          POSTGRES_PASSWORD: package_smoke_only
+          POSTGRES_DB: small_chain_package_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U small_chain -d small_chain_package_smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://small_chain:package_smoke_only@localhost:5432/small_chain_package_smoke?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Download the verified candidate archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          timeout 60s gh run download "$GITHUB_RUN_ID"
+          --repo "$GITHUB_REPOSITORY"
+          --name "release-bundle-$GITHUB_SHA"
+          --dir artifacts/release-bundle
+      - name: Exercise the packaged durable stack
+        run: make release-bundle-postgres-smoke RELEASE_SHA="$GITHUB_SHA"
+      - name: Preserve packaged durable-runtime evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packaged-postgres-smoke-${{ github.sha }}
+          path: artifacts/release-bundle-postgres-smoke/evidence.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9

@@ -687,3 +687,25 @@ PostgreSQL-tagged packages compiled and passed vet. No local Docker or
 PostgreSQL service was available, so no local database, Compose, browser or
 packaged-runtime result is claimed; the main workflow builds the exact remote
 bundle and remains authoritative for real-stack and artifact-upload evidence.
+
+## M5.8 packaged durable-stack smoke — 2026-11-13
+
+This increment started from remote `main` at `83918d4`; its
+[CI run #68](https://github.com/w4llisz/small-chain-platform/actions/runs/43201102908)
+passed all nine jobs including the first package-consumer gate, and GitHub
+showed no open pull request. The new dependent gate downloads the same release
+archive and exercises packaged migration, API, worker and healthcheck binaries
+against a disposable PostgreSQL 16 service without installing Go.
+
+The standard-library harness requires two successful migration runs, a durable
+checksum job with one injected retry, zero-exit SIGTERM shutdown, a fresh API
+and worker pair that reads the unchanged result, and a second post-restart job.
+It writes commit, archive digest, job results and exit codes to a bounded JSON
+artifact without recording the database URL. Synthetic tests cover the empty
+runtime environment, terminal-attempt validation, checksum validation and CI
+dependency/toolchain contract.
+
+In this workspace, 48 Python repository tests, Python bytecode compilation and
+`git diff --check` passed. No local PostgreSQL service or Go SDK was available,
+so no local database or `make verify` result is claimed; the main workflow is
+the authoritative real-PostgreSQL and full Go acceptance gate.

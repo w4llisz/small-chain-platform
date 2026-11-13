@@ -806,3 +806,20 @@ draining/stopped events and exit zero after SIGTERM. Commit, archive digest and
 outcome are retained as `packaged-smoke-<sha>` JSON for 30 days. This gate
 exercises the Linux amd64 memory-mode package; PostgreSQL migration/worker
 execution remains a planned package-level gate.
+
+## M5.8: packaged PostgreSQL restart boundary (implemented)
+
+The `packaged-postgres-smoke` job depends on the memory package gate, downloads
+the same `release-bundle-<sha>` artifact and supplies a job-local PostgreSQL 16
+service. It does not install Go. Its subprocess environment keeps an empty
+`PATH`, isolated runtime directories and only the ephemeral database URL needed
+by the package.
+
+The packaged migration command must succeed twice before the packaged API and
+worker start as separate processes. A deliberately retrying checksum job must
+reach durable success, both processes must handle SIGTERM and exit zero, and a
+fresh API/worker pair must read the unchanged terminal result before completing
+a second job. This proves package wiring, migration idempotency, cross-process
+execution and database-backed restart persistence in one disposable CI run. It
+does not test version-to-version migration, PostgreSQL failover, production
+credentials, external side effects or a deployment environment.

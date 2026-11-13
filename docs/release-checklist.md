@@ -88,6 +88,13 @@ with the packaged healthcheck, completes a retrying checksum job and requires a
 zero exit after SIGTERM. Its commit-bound `packaged-smoke-<sha>` JSON evidence
 is retained for 30 days. PostgreSQL package execution is outside this gate.
 
+The following `packaged-postgres-smoke` gate downloads the same archive and
+uses an ephemeral PostgreSQL 16 service. Without installing Go, it runs the
+packaged migration twice, starts packaged API and worker processes, completes a
+retrying durable task, restarts both processes, reads the persisted result and
+completes another task. Its evidence is retained for 30 days; this is not a
+production database, upgrade-migration or failover claim.
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
@@ -96,6 +103,7 @@ is retained for 30 days. PostgreSQL package execution is outside this gate.
 - [ ] No credentials, generated artifacts, binaries, coverage output, or dirty measurement bundles are tracked.
 - [ ] The dependent release-bundle job verifies and uploads the exact candidate's bounded Linux amd64 archive.
 - [ ] The packaged-smoke job downloads that exact archive and passes healthcheck, checksum/retry and graceful SIGTERM checks without a Go toolchain runtime path.
+- [ ] The packaged-postgres-smoke job uses that archive to pass migration, cross-process durable execution, restart persistence and graceful shutdown checks against ephemeral PostgreSQL.
 
 ## Tag and publish
 
