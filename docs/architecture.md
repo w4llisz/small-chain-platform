@@ -823,3 +823,20 @@ a second job. This proves package wiring, migration idempotency, cross-process
 execution and database-backed restart persistence in one disposable CI run. It
 does not test version-to-version migration, PostgreSQL failover, production
 credentials, external side effects or a deployment environment.
+
+## M5.9: candidate evidence index (implemented)
+
+The final `candidate-evidence-summary` job depends on the PostgreSQL package
+gate, so GitHub starts it only after the full source, integration, build and two
+package-consumer chains succeed. It reads the current run's artifact and job
+metadata through the scoped Actions token and downloads four exact artifacts:
+the source attestation, release archive, memory smoke evidence and PostgreSQL
+restart evidence.
+
+The standard-library validator rejects missing, repeated, expired or
+wrong-commit artifacts; unsuccessful required jobs; non-canonical JSON; wrong
+repository/SHA/run/version bindings; invalid runtime results; and disagreement
+between the downloaded archive SHA-256 and either smoke result. The output is a
+canonical navigation index containing GitHub artifact IDs/digests, extracted
+payload digests and stable commit/run URLs. It does not replace GitHub's
+artifact service, sign content, authorize a tag or prove production readiness.

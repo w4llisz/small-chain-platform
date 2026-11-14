@@ -300,3 +300,41 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
+
+  candidate-evidence-summary:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [packaged-postgres-smoke]
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Read candidate artifact and job identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts/candidate-evidence-input
+          timeout 60s gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" > artifacts/candidate-evidence-input/artifacts.json
+          timeout 60s gh api --method GET "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > artifacts/candidate-evidence-input/jobs.json
+      - name: Download exact candidate evidence inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          timeout 60s gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "candidate-$GITHUB_SHA" --dir artifacts/candidate-evidence-input/candidate
+          timeout 60s gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "release-bundle-$GITHUB_SHA" --dir artifacts/candidate-evidence-input/release
+          timeout 60s gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "packaged-smoke-$GITHUB_SHA" --dir artifacts/candidate-evidence-input/memory
+          timeout 60s gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "packaged-postgres-smoke-$GITHUB_SHA" --dir artifacts/candidate-evidence-input/postgres
+      - name: Build strict candidate evidence index
+        run: make candidate-evidence-summary RELEASE_SHA="$GITHUB_SHA" RELEASE_RUN_ID="$GITHUB_RUN_ID"
+      - name: Preserve candidate evidence summary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-evidence-summary-${{ github.sha }}
+          path: artifacts/candidate-evidence-summary/summary.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9

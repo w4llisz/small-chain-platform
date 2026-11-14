@@ -709,3 +709,30 @@ In this workspace, 48 Python repository tests, Python bytecode compilation and
 `git diff --check` passed. No local PostgreSQL service or Go SDK was available,
 so no local database or `make verify` result is claimed; the main workflow is
 the authoritative real-PostgreSQL and full Go acceptance gate.
+
+## M5.9 candidate evidence summary — 2026-11-14
+
+This increment started from remote `main` at `cf20c4e`; its
+[CI run #69](https://github.com/w4llisz/small-chain-platform/actions/runs/43411660961)
+passed all ten jobs, including the packaged PostgreSQL restart gate, and GitHub
+showed no open pull request. The new final job consumes the four exact
+candidate artifacts produced by its own run and queries the same run's job and
+artifact metadata with read-only Actions permission.
+
+The standard-library validator requires all ten upstream jobs to be successful,
+strict attestation repository/SHA/run binding, unique unexpired artifact
+identity, canonical smoke evidence, valid retry/restart/exit results and one
+shared release archive SHA-256. The output records GitHub artifact IDs and ZIP
+digests, downloaded payload hashes, stable review URLs and explicit passing
+checks without creating a tag, signature, release or deployment.
+
+Synthetic tests cover the valid summary, archive-digest divergence,
+wrong-commit artifact metadata, a failed required job, non-canonical smoke
+evidence and the workflow dependency/toolchain contract. All 54 Python
+repository tests, Python bytecode compilation and `git diff --check` passed.
+The new validator also assembled a real summary from CI #69's four freshly
+downloaded artifacts and API metadata, agreeing on release archive SHA-256
+`bcb87bc61d78d376636b7bde860f30e960089e04dc31f201ad90580944149cf2`.
+No Go SDK was available locally, so `make verify` stopped at its explicit
+`gofmt is required` precondition; the new main workflow remains authoritative
+for the current commit's live artifact assembly and full Go verification.

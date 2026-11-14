@@ -44,7 +44,7 @@ class ReleaseCandidateTest(unittest.TestCase):
         ):
             self.assertIn(heading, checklist)
         self.assertEqual(checklist.count("- [x] "), 3)
-        self.assertEqual(checklist.count("- [ ] "), 7)
+        self.assertEqual(checklist.count("- [ ] "), 8)
         self.assertIn(f'test "$(cat .go-version)" = "{version}"', checklist)
         self.assertIn("does not declare v0.1.0 released", checklist)
         self.assertIn("exactly-once external effects", checklist)

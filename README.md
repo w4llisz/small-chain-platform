@@ -119,6 +119,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `scripts/release_bundle.py` | Deterministic Linux amd64 candidate build, fixed-layout verification and embedded Go metadata checks |
 | `scripts/release_bundle_smoke.py` | Source-free package extraction, packaged healthcheck/job execution and graceful SIGTERM evidence |
 | `scripts/release_bundle_postgres_smoke.py` | Packaged migration/API/worker durable execution and restart evidence against ephemeral PostgreSQL |
+| `scripts/candidate_evidence_summary.py` | Strict commit/run index of attestation, release archive and packaged-runtime evidence |
 | `docs/measurements/` | Reviewed controlled-run reports with commit-bound raw evidence and limitations |
 | `docs/incidents/` | Reviewed worker-crash evidence with GitHub artifact provenance, hashes and explicit limitations |
 | `docs/api.md` | Requests, responses, limits and error semantics |

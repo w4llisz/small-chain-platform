@@ -4,13 +4,14 @@ RELEASE_VERSION ?= v0.1.0
 RELEASE_REPOSITORY ?= w4llisz/small-chain-platform
 RELEASE_SHA ?= $(shell git rev-parse HEAD)
 RELEASE_ARCHIVE ?= artifacts/release-bundle/small-chain-platform-$(RELEASE_VERSION)-linux-amd64.tar.gz
+RELEASE_RUN_ID ?= 0
 .DEFAULT_GOAL := run
 
 .PHONY: web-verify
 web-verify:
 	cd web && npm ci && npm run verify
 
-.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose release-bundle release-bundle-smoke release-bundle-postgres-smoke
+.PHONY: run build load fmt check-fmt vet test test-scripts verify smoke fuzz migrate test-integration test-e2e compose-up compose-down compose-clean compose-smoke compose-trace-up compose-trace-smoke incident-compose measure-compose release-bundle release-bundle-smoke release-bundle-postgres-smoke candidate-evidence-summary
 run:
 	$(GO) run ./cmd/small-chain
 build:
@@ -110,3 +111,17 @@ release-bundle-postgres-smoke:
 		--sha "$(RELEASE_SHA)" \
 		--version "$(RELEASE_VERSION)" \
 		--evidence artifacts/release-bundle-postgres-smoke/evidence.json
+
+candidate-evidence-summary:
+	python3 scripts/candidate_evidence_summary.py \
+		--repository "$(RELEASE_REPOSITORY)" \
+		--sha "$(RELEASE_SHA)" \
+		--run-id "$(RELEASE_RUN_ID)" \
+		--version "$(RELEASE_VERSION)" \
+		--artifact-metadata artifacts/candidate-evidence-input/artifacts.json \
+		--jobs-metadata artifacts/candidate-evidence-input/jobs.json \
+		--attestation artifacts/candidate-evidence-input/candidate/attestation.json \
+		--release-bundle artifacts/candidate-evidence-input/release/small-chain-platform-$(RELEASE_VERSION)-linux-amd64.tar.gz \
+		--packaged-smoke artifacts/candidate-evidence-input/memory/evidence.json \
+		--packaged-postgres-smoke artifacts/candidate-evidence-input/postgres/evidence.json \
+		--output artifacts/candidate-evidence-summary/summary.json

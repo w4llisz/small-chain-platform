@@ -95,6 +95,13 @@ retrying durable task, restarts both processes, reads the persisted result and
 completes another task. Its evidence is retained for 30 days; this is not a
 production database, upgrade-migration or failover claim.
 
+The final `candidate-evidence-summary` gate reads the same run's job and
+artifact metadata, downloads the attestation, archive and both smoke results,
+and emits one canonical reviewer index. The index requires all ten upstream
+jobs to be successful, records the four GitHub artifact IDs and digests, and
+proves both smoke results refer to the downloaded archive SHA-256. It is
+navigation evidence, not a signature or permission to tag.
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
@@ -104,6 +111,7 @@ production database, upgrade-migration or failover claim.
 - [ ] The dependent release-bundle job verifies and uploads the exact candidate's bounded Linux amd64 archive.
 - [ ] The packaged-smoke job downloads that exact archive and passes healthcheck, checksum/retry and graceful SIGTERM checks without a Go toolchain runtime path.
 - [ ] The packaged-postgres-smoke job uses that archive to pass migration, cross-process durable execution, restart persistence and graceful shutdown checks against ephemeral PostgreSQL.
+- [ ] The candidate-evidence-summary job binds all ten successful upstream jobs and the four exact evidence artifacts to the same repository, commit, run, version and release archive digest.
 
 ## Tag and publish
 
