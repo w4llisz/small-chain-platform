@@ -840,3 +840,20 @@ between the downloaded archive SHA-256 and either smoke result. The output is a
 canonical navigation index containing GitHub artifact IDs/digests, extracted
 payload digests and stable commit/run URLs. It does not replace GitHub's
 artifact service, sign content, authorize a tag or prove production readiness.
+
+## M5.10: offline aggregate-evidence review (implemented)
+
+The aggregate artifact is treated as an untrusted transport envelope during
+review. Before extraction, the offline verifier hashes the original ZIP against
+the digest supplied by GitHub metadata. It then requires exactly one bounded,
+regular, unencrypted and non-symlink `summary.json` entry and rejects duplicate
+JSON keys or any byte representation outside the generator's canonical format.
+
+Schema validation binds the candidate repository, commit, workflow run and
+version to reviewer-supplied expectations. It also fixes the upstream job and
+check sets, artifact order and names, unique artifact IDs and GitHub digests,
+artifact URLs, and the relationship between the release archive digest and the
+release-bundle payload. The first downloaded example is preserved with its
+provenance and limitations. This proves integrity and internal consistency for
+one historical summary; it does not re-run the indexed artifacts, sign them,
+authorize a tag or establish production readiness.

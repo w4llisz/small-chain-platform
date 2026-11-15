@@ -1,0 +1,66 @@
+{
+  "artifacts": [
+    {
+      "github_digest": "sha256:a77f2c0b935dee37d0e10e2782eb16434b8e15b51217b7cf716d11074e0f64e5",
+      "id": 14110065746,
+      "name": "candidate-9e3740752ad5d05bd46662262776fea5078cb4bf",
+      "payload_sha256": "36f64d60dabcec8651e352c891b1f925890ad628a72bbe801a8614c2c00d6fa6",
+      "size_bytes": 507,
+      "url": "https://github.com/w4llisz/small-chain-platform/actions/runs/43584342944/artifacts/14110065746"
+    },
+    {
+      "github_digest": "sha256:0c8ab00f2395c9d24334351a84cb93ed3e15d350d5239d85d3f3286f24f9e4dd",
+      "id": 14109648911,
+      "name": "release-bundle-9e3740752ad5d05bd46662262776fea5078cb4bf",
+      "payload_sha256": "f15c4784527e8ce8872395cae0c2984d0fff58c55054fdeabd0ee4164b344846",
+      "size_bytes": 40310867,
+      "url": "https://github.com/w4llisz/small-chain-platform/actions/runs/43584342944/artifacts/14109648911"
+    },
+    {
+      "github_digest": "sha256:73a484c30d614794e3ee9760bde08e33ac1d60317f0ee894b18ff47990ac3e33",
+      "id": 14110021041,
+      "name": "packaged-smoke-9e3740752ad5d05bd46662262776fea5078cb4bf",
+      "payload_sha256": "f8730b870752d9efa629ca2039fe22007b25cd2e5d61f9fcc3b6780149b4ff1d",
+      "size_bytes": 511,
+      "url": "https://github.com/w4llisz/small-chain-platform/actions/runs/43584342944/artifacts/14110021041"
+    },
+    {
+      "github_digest": "sha256:a3a5bde575b432e5743b9decc364ff5f6ded262621b5c7bfd1ba2d468b301749",
+      "id": 14109781832,
+      "name": "packaged-postgres-smoke-9e3740752ad5d05bd46662262776fea5078cb4bf",
+      "payload_sha256": "ae6225128b270a09edd3260acfd57f9520026b404b8eac0ddee418b42bba65a3",
+      "size_bytes": 656,
+      "url": "https://github.com/w4llisz/small-chain-platform/actions/runs/43584342944/artifacts/14109781832"
+    }
+  ],
+  "candidate": {
+    "commit_url": "https://github.com/w4llisz/small-chain-platform/commit/9e3740752ad5d05bd46662262776fea5078cb4bf",
+    "repository": "w4llisz/small-chain-platform",
+    "run_id": 43584342944,
+    "run_url": "https://github.com/w4llisz/small-chain-platform/actions/runs/43584342944",
+    "sha": "9e3740752ad5d05bd46662262776fea5078cb4bf",
+    "version": "v0.1.0"
+  },
+  "checks": {
+    "archive_digest_consensus": true,
+    "artifact_identity_binding": true,
+    "attestation_binding": true,
+    "packaged_postgres_restart_evidence": true,
+    "packaged_runtime_evidence": true,
+    "required_jobs_successful": true
+  },
+  "release_archive_sha256": "f15c4784527e8ce8872395cae0c2984d0fff58c55054fdeabd0ee4164b344846",
+  "required_jobs": [
+    "candidate-attestation",
+    "e2e",
+    "incident",
+    "measurement",
+    "packaged-postgres-smoke",
+    "packaged-smoke",
+    "postgres",
+    "release-bundle",
+    "verify",
+    "web"
+  ],
+  "schema_version": 1
+}

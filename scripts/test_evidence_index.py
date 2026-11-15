@@ -31,7 +31,7 @@ class PortfolioEvidenceIndexTest(unittest.TestCase):
         self.assertIn("| Limit / non-claim |", content)
         section = content.split("## Claim-to-evidence map", 1)[1].split("\n## ", 1)[0]
         rows = [line for line in section.splitlines() if line.startswith("| ")]
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 11)
         for row in rows[2:]:
             cells = [cell.strip() for cell in row.strip("|").split("|")]
             self.assertEqual(len(cells), 5)

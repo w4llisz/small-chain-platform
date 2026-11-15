@@ -102,6 +102,15 @@ jobs to be successful, records the four GitHub artifact IDs and digests, and
 proves both smoke results refer to the downloaded archive SHA-256. It is
 navigation evidence, not a signature or permission to tag.
 
+Before selecting a tag, independently download that summary ZIP and run
+`scripts/verify_candidate_evidence_summary.py` with GitHub's recorded digest
+and the intended repository, SHA, run ID and version. The verifier rejects ZIP
+substitution, unsafe or extra entries, non-canonical or expanded schemas,
+identity/URL substitution and release archive digest disagreement. The first
+reviewed example is preserved under
+[`docs/releases/9e37407/`](releases/9e37407/). A later head requires a new
+summary and review.
+
 ## Immutable candidate gates
 
 - [ ] The candidate is the current `origin/main` commit, has no unresolved release-blocking PR and the tracked tree is clean.
@@ -112,6 +121,7 @@ navigation evidence, not a signature or permission to tag.
 - [ ] The packaged-smoke job downloads that exact archive and passes healthcheck, checksum/retry and graceful SIGTERM checks without a Go toolchain runtime path.
 - [ ] The packaged-postgres-smoke job uses that archive to pass migration, cross-process durable execution, restart persistence and graceful shutdown checks against ephemeral PostgreSQL.
 - [ ] The candidate-evidence-summary job binds all ten successful upstream jobs and the four exact evidence artifacts to the same repository, commit, run, version and release archive digest.
+- [ ] The unextracted candidate-evidence summary ZIP passes independent digest, archive-shape, canonical-schema and candidate-binding review using GitHub's recorded artifact digest.
 
 ## Tag and publish
 

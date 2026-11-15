@@ -736,3 +736,33 @@ downloaded artifacts and API metadata, agreeing on release archive SHA-256
 No Go SDK was available locally, so `make verify` stopped at its explicit
 `gofmt is required` precondition; the new main workflow remains authoritative
 for the current commit's live artifact assembly and full Go verification.
+
+## M5.10 reviewed aggregate evidence — 2026-11-15
+
+This review started from a fresh clone of remote `main` at `9e37407`. GitHub
+showed no open pull request, and [CI run #70](https://github.com/w4llisz/small-chain-platform/actions/runs/43584342944)
+had completed all 11 jobs successfully on attempt 2. Attempt 1 encountered a
+transient Docker Hub PostgreSQL blob error; its failed jobs were retried rather
+than treating an infrastructure download failure as product evidence.
+
+Artifact `14109634266` was downloaded through the authorized repository
+account. The original ZIP matched GitHub's recorded
+`sha256:ae890c76570069f9cda9ca1774af7f239a4315ff5de3f39c793ca3a773027e03`
+digest and contained only a regular, unencrypted, non-symlink `summary.json`.
+The offline verifier accepted the real artifact's canonical schema, expected
+repository/SHA/run/version, fixed jobs and checks, four ordered unique artifact
+identities and release archive digest agreement. The byte-identical JSON and
+review limitations are preserved under `docs/releases/9e37407/`.
+
+All 65 Python repository tests, Python bytecode compilation, the real artifact
+review and `git diff --check` passed. The new negative cases cover ZIP digest
+substitution, extra entries, symlinks, non-canonical JSON, candidate and
+artifact substitution, repeated identity, a false check, schema expansion and
+release archive digest disagreement. No Go SDK was available locally, so the
+bounded `make verify` attempt stopped immediately at `gofmt is required`; the
+new main workflow remains the authoritative full Go and real-stack gate.
+
+This review proves integrity and internal binding for one historical summary.
+It does not re-execute every indexed payload, provide a signature, authorize a
+tag or release, or establish production readiness. Committing the review
+advances `main`, so `9e37407` cannot be reused as the later immutable candidate.
