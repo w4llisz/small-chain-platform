@@ -766,3 +766,36 @@ This review proves integrity and internal binding for one historical summary.
 It does not re-execute every indexed payload, provide a signature, authorize a
 tag or release, or establish production readiness. Committing the review
 advances `main`, so `9e37407` cannot be reused as the later immutable candidate.
+
+## README transport-integrity repair — 2026-11-16
+
+Fresh remote main was `5bf04a2`; its CI run #71 completed all 11 jobs
+successfully and no PR was open. Direct inspection of Git blobs nevertheless
+found a terminal truncation header and an inline omission marker committed in
+README. The omission merged the summary-script row with the verification row
+and removed operator/evidence navigation. Green runtime tests had not detected
+this documentation corruption.
+
+Restored the README bytes from parent `9e37407` and added the intended M5.10
+verifier row. The new document-integrity tests first failed on the damaged
+README, then passed after restoration. They scan README and docs Markdown for
+transport truncation markers and require complete, existing review/operator
+entry points in the repository map. Normal discussion of truncation and ordinary
+ellipses remain allowed. This is a targeted regression guard, not a general
+proof that all prose is complete or correct.
+
+All 69 Python repository tests, bytecode compilation and `git diff --check`
+passed. With Go 1.27.3, the 60-second `make verify` run passed formatting, vet,
+race-enabled Go tests and Python tests, then hit its time limit during the
+first static build. Build and process smoke are checked separately below.
+No Go runtime, database schema or frontend code changed in this increment.
+M5.11 remains planned; this repair takes priority over the next feature.
+
+The separate 60-second `make smoke` completed successfully: all six static
+binaries built, and the real-process harness passed retry, checksum,
+idempotency, SIGTERM drain and forced cancellation. Together these runs cover
+all `make verify` targets, without claiming that the initial timed run exited
+successfully. PostgreSQL/Chromium/Compose checks remain the new commit's CI
+gates. Before the branch update, the uploaded Git tree must match the local
+index tree SHA so truncated display output cannot silently become committed
+file content again.
