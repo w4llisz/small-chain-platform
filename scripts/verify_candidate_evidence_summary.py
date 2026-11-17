@@ -29,6 +29,7 @@ DIGEST_PATTERN = re.compile(r"sha256:([0-9a-f]{64})")
 HEX_64_PATTERN = re.compile(r"[0-9a-f]{64}")
 MAX_ARCHIVE_BYTES = 64 * 1024
 MAX_SUMMARY_BYTES = 32 * 1024
+MAX_REPORT_BYTES = 16 * 1024
 CHECKS = {
     "archive_digest_consensus",
     "artifact_identity_binding",
@@ -228,6 +229,65 @@ def verify_binding(
         raise SummaryReviewError("release archive digest differs from the release-bundle payload")
 
 
+def render_report(data: dict[str, object], archive_digest: str) -> bytes:
+    """Render already-verified evidence without local paths or wall-clock data."""
+    candidate = data["candidate"]
+    lines = [
+        "# Candidate evidence review",
+        "",
+        "Result: offline summary integrity and candidate binding verified.",
+        "This report does not authorize a tag or release or establish production readiness.",
+        "",
+        f"- Repository: `{candidate['repository']}`",
+        f"- Version: `{candidate['version']}`",
+        f"- Commit: [{candidate['sha']}]({candidate['commit_url']})",
+        f"- Workflow: [run {candidate['run_id']}]({candidate['run_url']})",
+        f"- Summary ZIP SHA-256: `{archive_digest}`",
+        f"- Canonical summary JSON SHA-256: `{hashlib.sha256(canonical_json(data)).hexdigest()}`",
+        f"- Release archive SHA-256: `{data['release_archive_sha256']}`",
+        "",
+        "## Indexed input artifacts",
+        "",
+        "ZIP digests identify GitHub downloads; payload digests identify their extracted contents.",
+        "",
+    ]
+    for artifact in data["artifacts"]:
+        lines.extend([
+            f"### {artifact['name']}",
+            "",
+            f"- Source: [artifact {artifact['id']}]({artifact['url']})",
+            f"- Recorded ZIP size: {artifact['size_bytes']} bytes",
+            f"- GitHub ZIP digest: `{artifact['github_digest']}`",
+            f"- Payload SHA-256: `{artifact['payload_sha256']}`",
+            "",
+        ])
+    lines.extend([
+        "## Checks recorded by the summary",
+        "",
+        *[f"- `{name}`: passed" for name in sorted(CHECKS)],
+        "",
+        "## Upstream jobs recorded as successful",
+        "",
+        *[f"- `{name}`" for name in REQUIRED_JOBS],
+        "",
+        "## Review boundary",
+        "",
+        "The ZIP digest and repository/SHA/run/version expectations must come from trusted",
+        "metadata supplied by the reviewer. This offline view checks the summary; it does",
+        "not download or independently re-run the four indexed payloads or their tests.",
+        "It provides no cryptographic signature, current-main check or current CI status.",
+        "Artifact links may expire. Historical success cannot be applied to a newer commit.",
+        "Tagging and publishing require a separate current-head review and authorization.",
+        "The synthetic checksum evidence does not prove production readiness, an SLO,",
+        "PostgreSQL failover or exactly-once external side effects.",
+        "",
+    ])
+    report = "\n".join(lines).encode("utf-8")
+    if len(report) > MAX_REPORT_BYTES:
+        raise SummaryReviewError("review report exceeds the 16 KiB limit")
+    return report
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", required=True, type=Path)
@@ -236,6 +296,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--report", type=Path, help="write Markdown to a new file after verification")
     return parser.parse_args()
 
 
@@ -250,6 +311,12 @@ def main() -> int:
             expected_run_id=args.run_id,
             expected_version=args.version,
         )
+        if args.report is not None:
+            report = render_report(data, digest)
+            # Exclusive creation also refuses aliases/symlinks to the source ZIP.
+            # A previous review must never be silently replaced by this command.
+            with args.report.open("xb") as output:
+                output.write(report)
     except (OSError, SummaryReviewError) as exc:
         raise SystemExit(f"candidate evidence review failed: {exc}") from exc
     print(

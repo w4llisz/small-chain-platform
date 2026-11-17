@@ -799,3 +799,28 @@ successfully. PostgreSQL/Chromium/Compose checks remain the new commit's CI
 gates. Before the branch update, the uploaded Git tree must match the local
 index tree SHA so truncated display output cannot silently become committed
 file content again.
+
+## 2026-11-17 — M5.11 deterministic candidate review report
+
+- Started from remote main `9c571821d7358df8cde893a7a32745e48754ed8f`;
+  CI run `43853793554` was successful and there were no open pull requests.
+- Added optional `--report` to the offline summary verifier. The Markdown is
+  bounded to 16 KiB, binds the candidate and source hashes, cites all four input
+  artifacts and distinguishes recorded CI claims from the offline review.
+- Go 1.27.3 `timeout 60s make verify` passed formatting, vet, race tests and all
+  75 Python tests, then reached its time budget during the first static build
+  (exit 124). This is not recorded as a complete `make verify` pass.
+- A separate `timeout 60s make smoke` completed all six static builds and the
+  real-process retry/checksum/idempotency/SIGTERM drain/forced-cancel smoke.
+- Six new report tests cover deterministic CLI bytes, every artifact citation,
+  invalid evidence producing no report, existing-file/source-alias protection,
+  the report size ceiling and reproduction of the preserved historical report.
+- Downloaded original artifact `14109634266` again through the authorized
+  account. Its ZIP SHA-256 matched the recorded GitHub digest
+  `ae890c76570069f9cda9ca1774af7f239a4315ff5de3f39c793ca3a773027e03`.
+  The canonical JSON matched `docs/releases/9e37407/summary.json` byte for byte;
+  independent CLI runs produced identical Markdown. The generated historical
+  view is retained as `docs/releases/9e37407/review.md`.
+- No Go runtime, database or frontend behavior changed. PostgreSQL/Chromium/
+  Compose checks were not run locally; the new commit's CI remains their gate.
+  The historical report does not authorize a tag, release or production claim.

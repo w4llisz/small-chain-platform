@@ -57,3 +57,20 @@ python3 scripts/verify_candidate_evidence_summary.py \
 The digest must come from GitHub's artifact metadata rather than from the
 downloaded ZIP itself. The verifier works offline after those inputs and the
 ZIP have been obtained.
+
+## Deterministic Markdown view
+
+[`review.md`](review.md) was generated on 2026-11-17 by downloading the original
+ZIP again, checking the recorded GitHub digest and passing the command above
+with `--report review.md`. The source JSON remains byte-identical to the
+preserved summary. Repeating the command with a different new output filename
+produced the same report bytes. A regression test checks the preserved report
+against the verified historical JSON and recorded ZIP digest; that test does
+not download or revalidate the original ZIP.
+
+The report has a 16 KiB ceiling and contains no local path or generation time.
+It cites all four input artifacts, their GitHub ZIP and payload digests, the
+candidate/run, reported checks and upstream jobs. Output is created only after
+verification and must be a new file; an existing path, including a symlink or
+hardlink to the ZIP, is refused. This human-readable view preserves the same
+historical-review and release-authorization limitations as the raw summary.

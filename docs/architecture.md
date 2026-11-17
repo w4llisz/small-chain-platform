@@ -857,3 +857,19 @@ release-bundle payload. The first downloaded example is preserved with its
 provenance and limitations. This proves integrity and internal consistency for
 one historical summary; it does not re-run the indexed artifacts, sign them,
 authorize a tag or establish production readiness.
+
+## M5.11: bounded candidate-review rendering (implemented)
+
+The offline summary verifier accepts an optional `--report` output path. It
+finishes ZIP digest, canonical schema and reviewer-supplied candidate binding
+checks before rendering or opening that path. Exclusive file creation refuses
+existing files and aliases to the input ZIP, preserving source evidence and
+earlier reviews. Report output is UTF-8 with a 16 KiB maximum, fixed artifact/job
+ordering and sorted check names; no clock or local filesystem path enters it.
+
+The Markdown view cites the commit/run, summary ZIP and JSON hashes, release
+archive hash and all four indexed artifacts with their transport/payload
+digests. Recorded job/check outcomes are distinguished from the offline check
+performed now. The renderer does not fetch or rerun payloads, check current
+main/CI, sign evidence, authorize a tag or claim production readiness. A real
+historical summary has a preserved reproducible report alongside its raw JSON.

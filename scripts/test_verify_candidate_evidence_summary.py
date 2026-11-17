@@ -1,6 +1,9 @@
 import copy
 import hashlib
+import json
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -10,7 +13,9 @@ from scripts.candidate_evidence_summary import REQUIRED_JOBS, expected_artifact_
 from scripts.release_bundle import canonical_json
 from scripts.verify_candidate_evidence_summary import (
     SummaryReviewError,
+    MAX_REPORT_BYTES,
     read_artifact,
+    render_report,
     verify_binding,
 )
 
@@ -173,6 +178,97 @@ class CandidateEvidenceSummaryReviewTest(unittest.TestCase):
         document["candidate"]["tag"] = "v0.1.0"
         with self.assertRaisesRegex(SummaryReviewError, "candidate keys differ"):
             self.verify(document)
+
+    def run_report(self, digest, output, *, sha=SHA):
+        return subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("verify_candidate_evidence_summary.py")),
+             "--archive", str(self.archive), "--digest", digest,
+             "--repository", REPOSITORY, "--sha", sha, "--run-id", str(RUN_ID),
+             "--version", VERSION, "--report", str(output)],
+            capture_output=True, text=True, timeout=10,
+        )
+
+    def test_report_cli_is_deterministic_and_cites_every_input(self):
+        digest = self.write_archive()
+        first = self.archive.with_name("first.md")
+        second = self.archive.with_name("second.md")
+        for output in (first, second):
+            result = self.run_report(digest, output)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("PASS:", result.stdout)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        self.assertLessEqual(len(first.read_bytes()), MAX_REPORT_BYTES)
+        text = first.read_text()
+        data = valid_summary()
+        for artifact in data["artifacts"]:
+            for field in ("url", "name", "github_digest", "payload_sha256"):
+                self.assertIn(artifact[field], text)
+        for field in ("commit_url", "run_url", "version", "sha"):
+            self.assertIn(data["candidate"][field], text)
+        self.assertIn(digest.removeprefix("sha256:"), text)
+        self.assertIn(hashlib.sha256(canonical_json(data)).hexdigest(), text)
+        for job in REQUIRED_JOBS:
+            self.assertIn(f"`{job}`", text)
+        self.assertIn("does not authorize a tag or release", text)
+        self.assertIn("does not prove production readiness", text)
+        self.assertIn("not download or independently re-run", text)
+        self.assertNotIn(self.tempdir.name, text)
+
+    def test_report_does_not_depend_on_dictionary_insertion_order(self):
+        data = valid_summary()
+        reversed_data = dict(reversed(list(data.items())))
+        reversed_data["checks"] = dict(reversed(list(data["checks"].items())))
+        self.assertEqual(render_report(data, "b" * 64), render_report(reversed_data, "b" * 64))
+
+    def test_invalid_evidence_never_creates_report(self):
+        output = self.archive.with_name("review.md")
+        cases = [(valid_summary(), "f" * 40, None),
+                 (valid_summary(), SHA, "sha256:" + "f" * 64)]
+        invalid = valid_summary()
+        invalid["checks"]["required_jobs_successful"] = False
+        cases.append((invalid, SHA, None))
+        for data, sha, override_digest in cases:
+            with self.subTest(sha=sha, override_digest=override_digest):
+                digest = self.write_archive(data)
+                result = self.run_report(override_digest or digest, output, sha=sha)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("PASS:", result.stdout)
+                self.assertFalse(output.exists())
+
+    def test_report_refuses_existing_file_and_source_aliases(self):
+        digest = self.write_archive()
+        previous = self.archive.with_name("previous.md")
+        previous.write_text("previous review\n")
+        symlink = self.archive.with_name("source-link.md")
+        symlink.symlink_to(self.archive)
+        hardlink = self.archive.with_name("source-hardlink.md")
+        hardlink.hardlink_to(self.archive)
+        original = self.archive.read_bytes()
+        for output in (previous, self.archive, symlink, hardlink):
+            with self.subTest(output=output.name):
+                result = self.run_report(digest, output)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("PASS:", result.stdout)
+                self.assertEqual(self.archive.read_bytes(), original)
+                self.assertEqual(previous.read_text(), "previous review\n")
+
+    def test_report_size_limit_fails_before_writing(self):
+        data = valid_summary()
+        data["candidate"]["version"] = "v" + "1" * MAX_REPORT_BYTES + ".0.0"
+        with self.assertRaisesRegex(SummaryReviewError, "16 KiB"):
+            render_report(data, "b" * 64)
+
+    def test_preserved_historical_report_matches_verified_summary(self):
+        directory = Path(__file__).resolve().parents[1] / "docs/releases/9e37407"
+        data = json.loads((directory / "summary.json").read_bytes())
+        verify_binding(
+            data, expected_repository=REPOSITORY,
+            expected_sha="9e3740752ad5d05bd46662262776fea5078cb4bf",
+            expected_run_id=43584342944, expected_version=VERSION,
+        )
+        # Historical ZIP digest from the independent review's GitHub metadata.
+        digest = "ae890c76570069f9cda9ca1774af7f239a4315ff5de3f39c793ca3a773027e03"
+        self.assertEqual((directory / "review.md").read_bytes(), render_report(data, digest))
 
 
 if __name__ == "__main__":
