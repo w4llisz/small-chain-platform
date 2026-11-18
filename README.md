@@ -73,18 +73,55 @@ curl -s -X POST http://127.0.0.1:8080/v1/jobs \
 
 ## Architecture
 
+Both modes below are implemented. `make run` defaults to memory; `make compose-up`
+starts the PostgreSQL backend and observability stack. The React console is
+started separately with Vite and requires PostgreSQL-backed list/history APIs.
+
+### Durable mode: separate API and worker processes
+
+Arrows show calls or database operations, not startup dependencies.
+
 ```mermaid
 flowchart TD
-  Client["CLI / future React console"] --> API["Go HTTP API"]
-  API --> Engine["Engine: admission and lifecycle"]
-  Engine --> State["Bounded memory records and keys"]
-  Engine --> Queue["Bounded pending queue"]
-  Queue --> Workers["Fixed worker pool"]
-  Workers --> Executor["Cooperative checksum executor"]
-  Workers --> State
+  CLI["CLI / HTTP client"] --> API["Go API: admission, reads, cancellation, retention"]
+  UI["React console via Vite"] -->|/v1| API
+  API -->|transactions| DB["PostgreSQL: jobs, leases, events, admission cap"]
+  Migrate["Migration command"] -->|schema| DB
+  Worker["Go worker: bounded concurrent attempts"] -->|claim, heartbeat, fenced outcome, recovery| DB
+  Worker --> Executor["Cooperative checksum executor"]
 ```
 
-The mutex protects short state transitions and admission. Executors run outside it. Backoff occupies a worker slot in M1: a deliberate simplicity/fairness tradeoff described in the [architecture](docs/architecture.md). M2 replaces in-memory admission and scheduling with transactional PostgreSQL records and leases; it does not add Kafka or Redis.
+PostgreSQL is the only scheduling source of truth. The worker polls committed
+rows; the API does not send work directly to it or retain a second memory queue.
+HTTP 202 follows commit. Lease recovery permits another attempt after a crash;
+fencing rejects stale database writes but cannot undo external side effects.
+Compose waits for database health and successful migration before starting the
+API and worker. The console is not embedded in the Go binary or Compose stack;
+production asset hosting remains unimplemented.
+
+### Memory mode: one Go process
+
+```mermaid
+flowchart TD
+  Client["CLI / HTTP client"] --> API["Go HTTP API"]
+  subgraph Process["Single small-chain process"]
+    API --> Engine["Engine: admission and lifecycle"]
+    Engine --> State["Bounded memory records and keys"]
+    Engine --> Queue["Bounded pending channel"]
+    Queue --> Workers["Fixed worker pool"]
+    Workers --> Executor["Cooperative checksum executor"]
+    Workers --> State
+  end
+```
+
+A mutex protects short state transitions; executors run outside it. Backoff
+occupies a worker slot. Restart loses all records, and list/history endpoints
+return 501, so this mode does not support the operations console workflow.
+
+Prometheus pulls metrics from the durable API and worker; Grafana queries
+Prometheus. Optional OTLP/HTTP export sends traces to a local Collector file
+sink. See the [current runtime map and source links](docs/architecture.md#current-runtime-map)
+for those separate observation paths and their limits.
 
 ## Repository map
 
@@ -109,7 +146,7 @@ The mutex protects short state transitions and admission. Executors run outside 
 | `deploy/observability/` | Version-controlled Prometheus, Grafana and optional OpenTelemetry Collector configuration |
 | `scripts/smoke.py` | Real binary: submit → retry → result; graceful and forced shutdown |
 | `.github/workflows/ci.yml` | Formatting, vet, race, fuzz, build, smoke, container build and PostgreSQL integration |
-| `docs/architecture.md` | Invariants, design tradeoffs, future PostgreSQL protocol |
+| `docs/architecture.md` | Current runtime map, invariants and implemented PostgreSQL protocol |
 | `docs/roadmap.md` | Scope, milestones, acceptance criteria and interview evidence |
 | `docs/evidence.md` | Interview-ready map from each implemented claim to code, tests, runtime evidence and limits |
 | `docs/release-checklist.md` | Bounded v0.1.0 candidate gates, scope and release procedure |

@@ -1,5 +1,51 @@
 # Architecture and decisions
 
+## Current runtime map
+
+The [README diagrams](../README.md#architecture) show the implemented execution
+paths. `cmd/small-chain` selects memory or PostgreSQL at startup; these are
+alternative backends, not a cache layered over the database. Durable execution
+uses the separate `cmd/small-chain-worker` process. The milestone sections below
+record design history; this section describes the current topology.
+
+Observation is separate from task dispatch. Labels distinguish HTTP reads
+from file writes; dotted arrows are optional trace exports:
+
+```mermaid
+flowchart TD
+  Grafana["Grafana"] -->|PromQL queries| Prometheus["Prometheus"]
+  Prometheus -->|scrape /metrics| API["Go API :8080"]
+  Prometheus -->|scrape /metrics| Worker["Go worker :9091"]
+  API -.->|OTLP/HTTP| Collector["Optional Collector :4318"]
+  Worker -.->|OTLP/HTTP| Collector
+  Collector -->|write| File["Rotating local traces.jsonl"]
+```
+
+The default Compose stack excludes the Collector. `make compose-trace-up`
+enables its `tracing` profile and supplies both exporters' endpoints. Grafana
+has a Prometheus data source, not a trace-query backend. Worker spans are separate
+roots correlated to admission spans by job ID; trace context is not persisted
+in jobs. Export failures do not change task outcomes or application readiness.
+JSON application logs go to stdout, not to the Collector's trace file.
+
+| Connection or boundary | Implementation to inspect | Contract |
+| --- | --- | --- |
+| Client → API → selected backend | [API entrypoint](../cmd/small-chain/main.go) | PostgreSQL mode constructs no memory engine; 202 follows durable submission |
+| React → Vite → API | [Vite proxy](../web/vite.config.ts) | Relative `/v1` requests reach loopback API; UI hosting is separate |
+| API retention → PostgreSQL | [Retention loop](../internal/maintenance/retention.go) | Serial bounded cleanup, stopped before closing the database pool |
+| Worker → PostgreSQL; worker → executor | [Worker loop](../internal/dbworker/worker.go) | Claim only free execution slots; execute after commit; heartbeat and fenced outcomes |
+| Migration → database; startup gates | [Compose](../compose.yaml) | Healthy database, then successful one-shot migration, then API/worker |
+| Prometheus → API and worker | [Scrape targets](../deploy/observability/prometheus.yml) | Pull `api:8080` and `worker:9091` every five seconds |
+| Grafana → Prometheus | [Data source](../deploy/observability/grafana/provisioning/datasources/prometheus.yml) | Dashboard reads metric data; no task-control path |
+| API/worker → Collector → file | [Exporter](../internal/telemetry/tracing.go), [Collector](../deploy/observability/otel-collector.yaml) | Optional bounded export, rotating local file, no business-health dependency |
+
+Compose publishes demo ports only on host loopback; PostgreSQL has no published
+host port. The backend has no authentication or tenant isolation and is not a
+public deployment. Adding more workers requires distinct owners and metrics
+addresses. Recovery is at least once; database fencing is not exactly-once
+external execution. The incident profile's two workers are drill fixtures, not
+two extra workers started by the default stack.
+
 ## Problem and scope
 
 Internal platforms need to accept background work, bound execution, explain failures and let operators intervene. Small Chain makes those contracts inspectable in a small codebase. A checksum task is a safe deterministic workload for exercising the scheduler; it is not a performance benchmark or an untrusted build sandbox.
@@ -283,7 +329,7 @@ transition without re-reading earlier evidence. Memory mode returns an explicit
 
 ## Durable scheduling architecture
 
-Keep one database and the same binary with API/worker modes. Add migrations, a database integration suite and Compose. Do not keep an in-memory channel as a second source of truth.
+Use one PostgreSQL database with separate API and worker binaries, explicit migrations, database integration tests and Compose. No in-memory channel acts as a second source of truth in durable mode.
 
 Implemented `jobs` records contain `id, idempotency_key, request_fingerprint, spec, state, attempts, max_attempts, available_at, lease_owner, lease_version, lease_expires_at, result, error, created_at, updated_at`. A singleton row bounds retained records and defines replay retention. `job_events` covers every low-frequency lifecycle transition. Tenant scoping is deferred until authentication exists.
 
@@ -325,7 +371,7 @@ pages as they would with `OFFSET`; retention may still remove unseen rows, so
 the API does not claim a snapshot spanning requests. Memory mode returns 501 to
 keep the operations contract tied to durable state.
 
-## Target architecture after M3 (planned)
+## M3.2–M3.4: operations console (implemented)
 
 M3.2 implements the first read-only UI slice in `web/`: a separate Vite build
 using relative `/v1` requests and a loopback development proxy. The typed client
@@ -335,7 +381,7 @@ request versions keep stale first-page or older-page responses from overwriting
 the active filter; failed older pages preserve already loaded rows for retry.
 There is no automatic polling or implied live snapshot. Tables retain readable
 state text, UTC timestamps and keyboard-accessible horizontal scrolling.
-Deployment and browser E2E remain planned; M3.4 adds the cancellation workflow below.
+Production hosting remains unimplemented; M3.5 supplies the real-stack browser E2E described below.
 
 M3.3 adds a selected-job detail view. Snapshot and retained event history are
 independent requests started in parallel; one resource can fail and retry while
@@ -351,8 +397,8 @@ in-flight requests and prevents late results from mutating the next selection.
 An older event-page failure preserves the loaded history and retries the same
 cursor. A 404 explains the retention boundary instead of presenting an empty
 history as evidence that the job never existed. React component and typed-client
-tests verify these transitions; browser visual QA and real-backend E2E are still
-unverified.
+tests verify these transitions. M3.5 adds real-backend E2E; subjective browser
+visual QA remains outside that acceptance test.
 
 M3.4 connects the existing cancellation endpoint to the detail snapshot. Only
 queued/running/retrying snapshots offer the action, which requires a separate

@@ -824,3 +824,22 @@ file content again.
 - No Go runtime, database or frontend behavior changed. PostgreSQL/Chromium/
   Compose checks were not run locally; the new commit's CI remains their gate.
   The historical report does not authorize a tag, release or production claim.
+
+## 2026-11-18 — M5.12 current runtime architecture navigation
+
+- Fresh remote main was `3534ca4bb442dc19b2e4422ec311e2b6b599c867`;
+  its CI run `44070328527` was successful, with no open pull requests.
+- Replaced the memory-only README overview with separate durable and memory
+  execution diagrams. Added an observation-path diagram and source-link table
+  to the architecture guide; corrected stale console/E2E and binary descriptions.
+- Reviewed edges against the API storage switch, durable worker claim/heartbeat/
+  outcome paths, Vite proxy, Compose startup/profile definitions, Prometheus
+  targets, Grafana data source and Collector/exporter configuration.
+- Go 1.27.3 `timeout 60s make verify` completed successfully: formatting, vet,
+  race tests, all 75 Python tests, six static builds and real-process smoke.
+  A separate document check resolved all 24 local links in README/architecture
+  and confirmed balanced code fences; `git diff --check` passed.
+- Documentation-only change: no database, frontend or runtime code changed.
+  PostgreSQL, Chromium and Compose were not rerun locally. Mermaid source was
+  reviewed but no browser visual rendering was performed. Current-commit CI
+  remains the integration gate; previous green CI is not its result.
