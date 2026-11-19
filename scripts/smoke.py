@@ -6,6 +6,7 @@ import signal
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 
@@ -37,11 +38,19 @@ def run(grace, delay_ms, expected_exit):
                 if key:
                     headers["Idempotency-Key"] = key
                 data = json.dumps(body).encode() if body is not None else None
-                with urllib.request.urlopen(urllib.request.Request(
-                        base + path, data=data, headers=headers, method=method), timeout=2) as response:
+                request = urllib.request.Request(
+                    base + path, data=data, headers=headers, method=method)
+                try:
+                    response = urllib.request.urlopen(request, timeout=2)
+                except urllib.error.HTTPError as error:
+                    response = error
+                with response:
                     return response.status, json.load(response)
 
             assert call("GET", "/readyz")[0] == 200
+            with urllib.request.urlopen(base + "/metrics", timeout=2) as response:
+                assert response.status == 200
+                assert 'small_chain_backend_info{storage="memory"} 1' in response.read().decode()
             # First prove the full result path independently of shutdown.
             spec = {"kind": "demo.checksum", "payload": "hello", "fail_first_attempts": 2}
             status, job = call("POST", "/v1/jobs", spec, "smoke")
@@ -57,6 +66,37 @@ def run(grace, delay_ms, expected_exit):
                 time.sleep(0.01)
             status, replay = call("POST", "/v1/jobs", spec, "smoke")
             assert status == 200 and replay["id"] == job["id"]
+            status, conflict = call("POST", "/v1/jobs", dict(spec, payload="changed"), "smoke")
+            assert status == 409 and conflict["error"]["code"] == "conflict", conflict
+            for path, code in (
+                ("/v1/jobs?state=failed&limit=50", "job_list_unavailable"),
+                ("/v1/jobs/" + job["id"] + "/events?limit=50", "event_history_unavailable"),
+            ):
+                status, error = call("GET", path)
+                assert status == 501 and error["error"]["code"] == code, error
+
+            status, cancel_job = call("POST", "/v1/jobs", {
+                "kind": "demo.checksum", "delay_ms": 5000, "timeout_ms": 10000}, "cancel-001")
+            assert status == 202
+            cancel_path = "/v1/jobs/" + cancel_job["id"]
+            status, canceled = call("POST", cancel_path + "/cancel")
+            assert status == 200 and canceled["state"] == "canceled", canceled
+            status, canceled = call("GET", cancel_path)
+            assert status == 200 and canceled["state"] == "canceled", canceled
+
+            status, timeout_job = call("POST", "/v1/jobs", {
+                "kind": "demo.checksum", "delay_ms": 500, "timeout_ms": 20}, "timeout-001")
+            assert status == 202
+            deadline = time.monotonic() + 5
+            while True:
+                status, timed_out = call("GET", "/v1/jobs/" + timeout_job["id"])
+                assert status == 200
+                if timed_out["state"] == "failed":
+                    assert timed_out["attempts"] == 1, timed_out
+                    assert timed_out["error"] == "context deadline exceeded", timed_out
+                    break
+                assert time.monotonic() < deadline, timed_out
+                time.sleep(0.01)
             pending = []
             for i in range(3):
                 _, task = call("POST", "/v1/jobs", {
@@ -79,4 +119,5 @@ def run(grace, delay_ms, expected_exit):
 if __name__ == "__main__":
     run("3s", 100, 0)
     run("20ms", 5000, 1)
-    print("PASS: retry, checksum, idempotency, SIGTERM drain and forced cancellation")
+    print("PASS: retry, checksum, replay/conflict, memory-only 501 contract, "
+          "cancel, timeout, SIGTERM drain and forced cancellation")

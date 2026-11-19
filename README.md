@@ -15,7 +15,7 @@ make verify       # formatting, vet, race tests, build, real-process smoke test
 make run          # listens on 127.0.0.1:8080
 ```
 
-In another terminal:
+This starts the **memory-mode** demo; no database is required. In another terminal:
 
 ```sh
 curl -i -X POST http://127.0.0.1:8080/v1/jobs \
@@ -25,26 +25,40 @@ curl -i -X POST http://127.0.0.1:8080/v1/jobs \
 
 # Replace JOB_ID with the returned id (or use the Location header).
 curl http://127.0.0.1:8080/v1/jobs/JOB_ID
-curl 'http://127.0.0.1:8080/v1/jobs?state=failed&limit=50'
-curl 'http://127.0.0.1:8080/v1/jobs/JOB_ID/events?limit=50'
 curl http://127.0.0.1:8080/metrics
 ```
 
-Expected terminal result: `state=succeeded`, `attempts=3`, and SHA-256 `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824`.
+The POST returns HTTP 202 with a job ID; completion is asynchronous. Repeat the
+GET until the job is terminal. Expected terminal result: `state=succeeded`, `attempts=3`, and SHA-256 `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824`.
 Repeat the same POST and key: HTTP 200 returns the same job. Change the payload under that key: HTTP 409.
+
+Job listing and event history require PostgreSQL mode and return HTTP 501 in
+this memory demo. Use the [durable setup](#durable-inspection-postgresql-only)
+for those endpoints and the operations console. Use a fresh process for the
+examples below, or distinct keys if repeating them; keys remain bound to their
+original task for the process lifetime.
 
 ```sh
 # A long task gives you time to cancel it.
-curl -s -X POST http://127.0.0.1:8080/v1/jobs \
+curl -i -X POST http://127.0.0.1:8080/v1/jobs \
+  -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: cancel-001' \
   -d '{"kind":"demo.checksum","delay_ms":5000,"timeout_ms":10000}'
-curl -X POST http://127.0.0.1:8080/v1/jobs/JOB_ID/cancel
+# Replace JOB_ID with this new long-running job ID, then cancel within 5 seconds.
+# HTTP 200: canceled; HTTP 409: the job already succeeded or failed.
+curl -i -X POST http://127.0.0.1:8080/v1/jobs/JOB_ID/cancel
 
 # A deterministic timeout demo: fails after the first attempt.
-curl -s -X POST http://127.0.0.1:8080/v1/jobs \
+curl -i -X POST http://127.0.0.1:8080/v1/jobs \
+  -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: timeout-001' \
   -d '{"kind":"demo.checksum","delay_ms":500,"timeout_ms":20}'
 ```
+
+The timeout POST also returns 202. GET its returned ID until `state=failed`
+with `attempts=1`; HTTP request acceptance is distinct from task success.
+`make smoke` verifies these memory-mode contracts against a real child process,
+including explicit 501 responses for the two durable-only endpoints.
 
 `demo.checksum` hashes at most 4 KiB of text. Its delay and transient-failure fields are deliberate test controls. It does not execute shell commands, containers, arbitrary code, or outbound HTTP requests.
 
@@ -226,6 +240,8 @@ admission-latency buckets. It does not wait for job completion or calculate a
 percentile. Reuse a key prefix only when replay behavior is the workload under
 test; otherwise clean the demo volumes or choose a new prefix.
 
+### Durable inspection (PostgreSQL only)
+
 For durable mode, follow the [PostgreSQL setup and test guide](docs/postgres.md). Apply migrations explicitly, then run the API and at least one worker:
 
 ```sh
@@ -237,6 +253,19 @@ go run ./cmd/small-chain-worker -owner=worker-a -metrics-addr=127.0.0.1:9091
 # In another terminal:
 curl http://127.0.0.1:9091/metrics
 ```
+
+After starting the durable API and worker, submit a job using the POST above.
+Use the ID returned by this database-backed service to inspect its history:
+
+```sh
+curl -i 'http://127.0.0.1:8080/v1/jobs?state=failed&limit=50'
+curl -i 'http://127.0.0.1:8080/v1/jobs/JOB_ID/events?limit=50'
+```
+
+Both endpoints return HTTP 200 for valid requests and an existing job; a failed
+job list can be empty. IDs from a previous memory process are not migrated to
+PostgreSQL and return 404 on lookup/history. Stop the memory server before
+starting the durable API on the same port.
 
 `DATABASE_URL` stays in the environment rather than process arguments. The API
 does not run DDL or start an in-process memory worker in this mode. Add more

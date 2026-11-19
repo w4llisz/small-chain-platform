@@ -843,3 +843,27 @@ file content again.
   PostgreSQL, Chromium and Compose were not rerun locally. Mermaid source was
   reviewed but no browser visual rendering was performed. Current-commit CI
   remains the integration gate; previous green CI is not its result.
+
+## 2026-11-19 — M5.13 quick-start HTTP contract audit
+
+- Fresh main was `6e0363544afa06eed7169d95ae5331e0b2566668`; its latest
+  CI run `44306716232` was successful. Open dependency PR #7 had successful
+  CI `44306843295`; this increment leaves its branch and dependency changes intact.
+- Confirmed that the default memory quick start incorrectly included job-list
+  and event-history requests. Moved them to explicitly PostgreSQL-only setup;
+  clarified asynchronous acceptance, key reuse, cancellation races and timeout.
+- Expanded the existing child-process smoke (run for both graceful and forced
+  shutdown configurations) to check metrics backend identity, 202 admission,
+  200 replay, 409 conflict, both 501 error codes, cancellation/readback and a
+  one-attempt failure with `context deadline exceeded`. Existing checksum,
+  retry and shutdown assertions remain in place. HTTP calls and polling retain
+  deadlines and child cleanup runs in `finally`.
+- Go 1.27.3 `timeout 60s make verify` passed formatting/vet but timed out during
+  race-test compilation (exit 124). Separate bounded `make test` passed every
+  race test; `make smoke` completed all six static builds and the expanded
+  real-process checks. All 75 Python unit tests and `git diff --check` passed.
+  These are completed equivalent checks, not a claim that the initial command passed.
+- Smoke uses the documented request bodies against a fresh binary on an
+  ephemeral loopback port; it does not execute literal README shell snippets.
+  PostgreSQL/Chromium/Compose were not run locally because their behavior was
+  unchanged; the new main workflow remains the integration gate.
