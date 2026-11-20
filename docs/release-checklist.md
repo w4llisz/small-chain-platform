@@ -6,7 +6,7 @@ completed against the exact commit that will be tagged.
 
 ## Preparation gates
 
-- [x] The pgx v5.12.0 security-floor decision and compatibility review are recorded below.
+- [x] The pgx v5.13.0 security-floor decision and compatibility review are recorded below.
 - [x] [`docs/evidence.md`](evidence.md) and [`docs/verification.md`](verification.md) identify the strongest evidence and its limits.
 - [x] [Candidate release notes](releases/v0.1.0.md) describe memory and PostgreSQL modes, compatibility, local-only credentials and the unauthenticated demo boundary.
 
@@ -25,7 +25,7 @@ an SLO, or performance outside the retained synthetic experiments.
 
 ## Reviewed dependency floor
 
-The release candidate requires pgx v5.12.0 or later. Version 5.12.0 fixes the
+The release candidate requires pgx v5.13.0 or later. The [v5.13.0 applicability review](dependencies/pgx-v5.13.0.md) covers malformed-row handling, ambiguous retries and client-certificate reload behavior. Version 5.12.0 fixes the
 upstream [simple-protocol batch injection advisory](https://github.com/jackc/pgx/security/advisories/GHSA-j38q-h3ph-jjpq)
 and [authentication/channel-binding advisory](https://github.com/jackc/pgx/security/advisories/GHSA-95fj-3fxw-g62g).
 Small Chain does not call `SendBatch`, select simple-protocol batches, implement

@@ -867,3 +867,27 @@ file content again.
   ephemeral loopback port; it does not execute literal README shell snippets.
   PostgreSQL/Chromium/Compose were not run locally because their behavior was
   unchanged; the new main workflow remains the integration gate.
+
+## 2026-11-20 — M5.14 pgx v5.13.0 integration review
+
+- Fresh main `b24aef9a7a25d6a5457de63f7275c0d0213d22d7` had successful CI
+  `44507601988`. PR #7 at `7727c34e6b5d4ddb2d32565d1b46900af4a7759c`
+  changed only go.mod/go.sum. Its CI `44306843295` passed verify, PostgreSQL,
+  web and E2E; main-only evidence/package jobs were skipped.
+- Reviewed the tagged upstream changelog and actual Scan/native-pgxpool/TLS
+  configuration paths. Retained PR #7's dependency commit as a merge parent,
+  raised the tested pgx floor to v5.13.0 and updated the release review links.
+  No application code, database migration or indirect dependency was changed.
+- Restored the pinned Go 1.27.3 toolchain after workspace maintenance. The
+  initial `timeout 60s make verify` passed formatting/vet, then timed out
+  during race-test compilation (exit 124). Separate bounded `make test` passed
+  all race tests; `make smoke` passed all six static builds and the complete
+  real-process HTTP/shutdown smoke. All 75 Python tests passed.
+- `go mod verify` passed. Integration-tag compilation passed for postgres,
+  dbworker and httpapi using `go test -tags=integration -run '^$'`; this ran
+  no database tests. Local PostgreSQL/Docker were unavailable. Real database
+  and browser evidence comes from the reviewed PR CI, not that compile check;
+  the combined main commit requires its own integration and packaging workflow.
+- Dependency-review local links and `git diff --check` passed. Certificate
+  rotation, malformed-server injection and production TLS were not exercised;
+  their applicability/limits are recorded in `docs/dependencies/pgx-v5.13.0.md`.

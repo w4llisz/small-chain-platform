@@ -95,7 +95,7 @@ class ReleaseCandidateTest(unittest.TestCase):
         )
         self.assertIsNotNone(match)
         version = tuple(int(part) for part in match.groups())
-        self.assertGreaterEqual(version, (5, 12, 0))
+        self.assertGreaterEqual(version, (5, 13, 0))
 
         go_sum = (ROOT / "go.sum").read_text(encoding="utf-8")
         self.assertNotIn("github.com/jackc/pgx/v5 v5.11.0 ", go_sum)
