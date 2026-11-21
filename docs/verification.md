@@ -891,3 +891,27 @@ file content again.
 - Dependency-review local links and `git diff --check` passed. Certificate
   rotation, malformed-server injection and production TLS were not exercised;
   their applicability/limits are recorded in `docs/dependencies/pgx-v5.13.0.md`.
+
+## 2026-11-21 — M5.15 post-upgrade candidate closure
+
+- Fresh main was `6e4962b7229253f2545a40beb88019c3bfc01506`; no open PR or
+  repository AGENTS.md was found. CI #77 (`44718814246`, attempt 1) completed
+  all 11 jobs successfully, including the main-only package and evidence chain.
+- Downloaded original summary artifact `14621481562` and candidate artifact
+  `14621421358`. Both offline verifiers passed with GitHub-provided ZIP digests
+  and the exact repository/SHA/run expectations. Preserved extracted JSON is
+  byte-identical. The attestation payload hash matches the summary, and all
+  four indexed artifact identities/sizes/digests match live GitHub metadata.
+  Two independent report renders were byte-identical.
+- Go 1.27.3 `timeout 60s make verify` passed in full: formatting, vet, race
+  tests, 75 Python tests, six static binaries and real-process HTTP/shutdown
+  smoke. Bounded `go mod verify`, integration-tag compilation and integration
+  vet passed. Compilation explicitly ran no database tests. Tracked source
+  remained unchanged during these checks; the review folder was untracked.
+- Recorded the nine candidate-gate dispositions and the remaining publication
+  decision. Added a final-review procedure that keeps the review outside the
+  immutable candidate tree; no repeated audit commit is required to release.
+- No Go, SQL or frontend runtime behavior changed. PostgreSQL, Chromium and
+  Compose were not run locally; those results are from CI #77 for the parent
+  commit. The new documentation commit must have its own CI status and does
+  not inherit that historical result. No tag, release or cloud resource was created.

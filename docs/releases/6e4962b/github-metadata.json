@@ -1,0 +1,107 @@
+{
+  "repository": "w4llisz/small-chain-platform",
+  "sha": "6e4962b7229253f2545a40beb88019c3bfc01506",
+  "run_id": 44718814246,
+  "run_number": 77,
+  "run_attempt": 1,
+  "conclusion": "success",
+  "jobs": [
+    {
+      "id": 136228953968,
+      "name": "e2e",
+      "conclusion": "success"
+    },
+    {
+      "id": 136228954213,
+      "name": "postgres",
+      "conclusion": "success"
+    },
+    {
+      "id": 136228954233,
+      "name": "incident",
+      "conclusion": "success"
+    },
+    {
+      "id": 136228954250,
+      "name": "measurement",
+      "conclusion": "success"
+    },
+    {
+      "id": 136228954379,
+      "name": "verify",
+      "conclusion": "success"
+    },
+    {
+      "id": 136228954384,
+      "name": "web",
+      "conclusion": "success"
+    },
+    {
+      "id": 136230927518,
+      "name": "candidate-attestation",
+      "conclusion": "success"
+    },
+    {
+      "id": 136230977069,
+      "name": "release-bundle",
+      "conclusion": "success"
+    },
+    {
+      "id": 136231421515,
+      "name": "packaged-smoke",
+      "conclusion": "success"
+    },
+    {
+      "id": 136231509992,
+      "name": "packaged-postgres-smoke",
+      "conclusion": "success"
+    },
+    {
+      "id": 136231724786,
+      "name": "candidate-evidence-summary",
+      "conclusion": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 14621481562,
+      "name": "candidate-evidence-summary-6e4962b7229253f2545a40beb88019c3bfc01506",
+      "size_in_bytes": 1027,
+      "digest": "sha256:d100fb49cc9cf99af47945e001dac507b32bfd9b7b67d7ca9c0748eb11a6704b",
+      "expired": false,
+      "expires_at": "2026-12-20T10:29:24Z"
+    },
+    {
+      "id": 14621421358,
+      "name": "candidate-6e4962b7229253f2545a40beb88019c3bfc01506",
+      "size_in_bytes": 507,
+      "digest": "sha256:832f8862ed51ce9307a321a2f4710e97b12b9d7be9098dd45ef517ab3043f027",
+      "expired": false,
+      "expires_at": "2026-12-20T10:27:33Z"
+    },
+    {
+      "id": 14620767519,
+      "name": "packaged-smoke-6e4962b7229253f2545a40beb88019c3bfc01506",
+      "size_in_bytes": 511,
+      "digest": "sha256:f29a5157c4026a81ed86fd98c64bc3d4b8959b04c9f3632ae43617fc6c7ef51e",
+      "expired": false,
+      "expires_at": "2026-12-20T10:28:39Z"
+    },
+    {
+      "id": 14620473464,
+      "name": "release-bundle-6e4962b7229253f2545a40beb88019c3bfc01506",
+      "size_in_bytes": 40328672,
+      "digest": "sha256:f10626d0ba4ab2d73eb1f059bb939f7021c39a3cf5e8b444cebdced00b044015",
+      "expired": false,
+      "expires_at": "2026-12-20T10:28:27Z"
+    },
+    {
+      "id": 14620358747,
+      "name": "packaged-postgres-smoke-6e4962b7229253f2545a40beb88019c3bfc01506",
+      "size_in_bytes": 658,
+      "digest": "sha256:ebeadf1b49a701ae7a25d4c10c38ba906a67bdcbe29b94859513155a385d623e",
+      "expired": false,
+      "expires_at": "2026-12-20T10:29:06Z"
+    }
+  ]
+}

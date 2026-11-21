@@ -123,6 +123,26 @@ summary and review.
 - [ ] The candidate-evidence-summary job binds all ten successful upstream jobs and the four exact evidence artifacts to the same repository, commit, run, version and release archive digest.
 - [ ] The unextracted candidate-evidence summary ZIP passes independent digest, archive-shape, canonical-schema and candidate-binding review using GitHub's recorded artifact digest.
 
+## Final review record
+
+Keep this tracked checklist as a template. Record final gate decisions in a
+separate review document outside the candidate working tree, identifying the
+full SHA, run ID/attempt, artifact IDs and GitHub digests, commands/results,
+reviewer and unresolved gaps. A completed record must refer to one immutable
+candidate; it must not infer current success from an older audit.
+
+Committing completed checkboxes or a review changes `main` and therefore creates
+a new candidate. Historical audits can be committed when they preserve a useful
+finding, such as the [post-pgx-upgrade closure audit](releases/6e4962b/README.md),
+but generating another audit commit for every successful run is not a release
+gate. For the final selection, leave the reviewed source untouched and use the
+CI artifacts and external review record. Check that the working tree is clean,
+no blocking PR has appeared and remote main still equals the reviewed SHA
+immediately before tagging. If it changed, review the new candidate instead.
+
+A green workflow completes technical checks; it does not select the release
+commit or authorize publication. Tagging and publishing remain separate actions.
+
 ## Tag and publish
 
 Only after every gate is checked on one immutable commit:

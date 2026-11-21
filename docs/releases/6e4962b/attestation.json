@@ -1,0 +1,28 @@
+{
+  "candidate": {
+    "commit_url": "https://github.com/w4llisz/small-chain-platform/commit/6e4962b7229253f2545a40beb88019c3bfc01506",
+    "ref": "refs/heads/main",
+    "repository": "w4llisz/small-chain-platform",
+    "sha": "6e4962b7229253f2545a40beb88019c3bfc01506"
+  },
+  "schema_version": 1,
+  "source": {
+    "clean_checkout": true,
+    "forbidden_tracked_paths": [],
+    "tracked_file_count": 168
+  },
+  "workflow": {
+    "name": "CI",
+    "required_jobs": [
+      "e2e",
+      "incident",
+      "measurement",
+      "postgres",
+      "verify",
+      "web"
+    ],
+    "required_jobs_conclusion": "success",
+    "run_id": 44718814246,
+    "run_url": "https://github.com/w4llisz/small-chain-platform/actions/runs/44718814246"
+  }
+}
