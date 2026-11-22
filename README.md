@@ -180,6 +180,12 @@ for those separate observation paths and their limits.
 
 ## Run and inspect
 
+The API and worker accept named flags only; neither accepts positional arguments
+or subcommands. Use `-h` to inspect defaults (exits successfully). For example,
+use `small-chain -storage=postgres`, not `small-chain postgres` or
+`small-chain serve -storage=postgres`. Unexpected positional arguments fail
+before initialization instead of silently ignoring the flags that follow them.
+
 ```sh
 go run ./cmd/small-chain -workers=4 -queue=64 -max-jobs=10000 -shutdown-grace=10s
 make fuzz

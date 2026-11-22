@@ -915,3 +915,23 @@ file content again.
   Compose were not run locally; those results are from CI #77 for the parent
   commit. The new documentation commit must have its own CI status and does
   not inherit that historical result. No tag, release or cloud resource was created.
+
+## 2026-11-22 — M5.16 reject ignored API positional arguments
+
+- Fresh main `b7dd1a7c44197849a5cd2728d57cc8829ead5624` had successful
+  CI `44897123491`; no open PR or repository AGENTS.md was found.
+- Confirmed that the API did not check leftover arguments after Go flag parsing.
+  A stray positional word stops parsing, potentially hiding a later storage
+  flag. The new real-process regression failed against the old binary with a
+  three-second timeout instead of the required configuration-error exit.
+- Added rejection immediately after parsing, before tracing, engine creation,
+  database connection or listening. The error does not echo argument values.
+  Worker rejection already existed and is covered by the same smoke checks.
+- `timeout 60s make verify` passed completely with Go 1.27.3: formatting, vet,
+  race tests, 75 Python tests, six static builds and the extended process smoke.
+  The smoke checks nine invalid API/worker invocations and successful help for
+  both binaries, with three-second subprocess deadlines and no inherited DSN.
+  Existing real HTTP, retry, cancellation, timeout and shutdown checks passed.
+- `git diff --check` passed. No SQL, frontend or durable scheduling code changed;
+  local database/E2E tests were not run. New main CI provides the integration
+  check for this commit; the parent's green result is not its result.

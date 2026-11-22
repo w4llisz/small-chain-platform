@@ -40,6 +40,9 @@ func run(logger *slog.Logger) error {
 	traceEndpoint := flag.String("trace-endpoint", "", "optional OTLP/HTTP traces endpoint; empty disables tracing")
 	traceSampleRatio := flag.Float64("trace-sample-ratio", 1, "root trace sample ratio when tracing is enabled (0,1]")
 	flag.Parse()
+	if flag.NArg() != 0 {
+		return errors.New("unexpected positional arguments: use named flags only")
+	}
 	if *grace <= 0 {
 		return errors.New("shutdown-grace must be positive")
 	}

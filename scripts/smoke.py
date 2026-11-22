@@ -2,12 +2,42 @@
 """Exercise the real binary, SIGTERM drain, and a forced shutdown deadline."""
 import hashlib
 import json
+import os
 import signal
 import subprocess
 import tempfile
 import time
 import urllib.error
 import urllib.request
+
+
+def check_cli_arguments():
+    # No inherited database credentials; every invocation must finish before
+    # startup. subprocess.run kills and reaps a timed-out child.
+    env = dict(os.environ, DATABASE_URL="")
+    for binary, prefix, started in (
+        ("./bin/small-chain", ["-addr=127.0.0.1:0"], "service.started"),
+        ("./bin/small-chain-worker", ["-owner=cli-smoke"], "worker.started"),
+    ):
+        cases = [
+            (["unexpected"], "unexpected positional arguments"),
+            (["unexpected", "-storage=postgres"], "unexpected positional arguments"),
+            (["--", "unexpected"], "unexpected positional arguments"),
+            (["-unknown"], "flag provided but not defined"),
+        ]
+        if binary.endswith("/small-chain"):
+            cases.append((["-storage=postgres", "unexpected"],
+                          "unexpected positional arguments"))
+        for args, expected in cases:
+            result = subprocess.run([binary, *prefix, *args], env=env,
+                                    capture_output=True, text=True, timeout=3)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0, (binary, args, output)
+            assert expected in output, (binary, args, output)
+            assert started not in output, (binary, args, output)
+        help_result = subprocess.run([binary, "-h"], env=env,
+                                     capture_output=True, text=True, timeout=3)
+        assert help_result.returncode == 0, help_result
 
 
 def run(grace, delay_ms, expected_exit):
@@ -117,7 +147,8 @@ def run(grace, delay_ms, expected_exit):
 
 
 if __name__ == "__main__":
+    check_cli_arguments()
     run("3s", 100, 0)
     run("20ms", 5000, 1)
-    print("PASS: retry, checksum, replay/conflict, memory-only 501 contract, "
+    print("PASS: CLI argument rejection/help, retry, checksum, replay/conflict, memory-only 501 contract, "
           "cancel, timeout, SIGTERM drain and forced cancellation")
