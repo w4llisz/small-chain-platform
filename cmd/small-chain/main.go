@@ -46,6 +46,16 @@ func run(logger *slog.Logger) error {
 	if *grace <= 0 {
 		return errors.New("shutdown-grace must be positive")
 	}
+	if *storage == "postgres" {
+		if *retentionInterval < 0 {
+			return errors.New("retention-interval must not be negative")
+		}
+		if *retentionInterval > 0 {
+			if err := maintenance.ValidateRetentionConfig(*retentionInterval, *retentionBatch); err != nil {
+				return err
+			}
+		}
+	}
 	traceProvider, err := telemetry.New(context.Background(), telemetry.Config{
 		Endpoint: *traceEndpoint, ServiceName: "small-chain-api", SampleRatio: *traceSampleRatio,
 	})
@@ -71,9 +81,6 @@ func run(logger *slog.Logger) error {
 		dsn := os.Getenv("DATABASE_URL")
 		if dsn == "" {
 			return errors.New("DATABASE_URL is required for postgres storage")
-		}
-		if *retentionInterval < 0 {
-			return errors.New("retention-interval must not be negative")
 		}
 		pgStore, err = postgres.Open(context.Background(), dsn)
 		if err != nil {

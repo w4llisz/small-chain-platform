@@ -40,6 +40,35 @@ def check_cli_arguments():
         assert help_result.returncode == 0, help_result
 
 
+def check_retention_configuration():
+    # Invalid cleanup settings must win over both absent and malformed DSNs.
+    for dsn in ("", "postgres://%invalid"):
+        for args, expected in (
+            (["-retention-interval=-1s"], "retention-interval must not be negative"),
+            (["-retention-batch=0"], "retention batch must be between 1 and 1000"),
+            (["-retention-batch=1001"], "retention batch must be between 1 and 1000"),
+        ):
+            result = subprocess.run(
+                ["./bin/small-chain", "-storage=postgres", *args],
+                env=dict(os.environ, DATABASE_URL=dsn),
+                capture_output=True, text=True, timeout=3)
+            assert result.returncode == 1, result
+            assert expected in result.stdout, result.stdout
+            assert "service.started" not in result.stdout, result.stdout
+    # Valid boundaries and disabled cleanup must reach the missing-DSN check.
+    for args in (
+        ["-retention-batch=1"], ["-retention-batch=1000"],
+        ["-retention-interval=0", "-retention-batch=0"],
+        ["-retention-interval=0", "-retention-batch=1001"],
+    ):
+        result = subprocess.run(
+            ["./bin/small-chain", "-storage=postgres", *args],
+            env=dict(os.environ, DATABASE_URL=""),
+            capture_output=True, text=True, timeout=3)
+        assert result.returncode == 1, result
+        assert "DATABASE_URL is required" in result.stdout, result.stdout
+
+
 def run(grace, delay_ms, expected_exit):
     with tempfile.NamedTemporaryFile(mode="w+") as logs:
         def read_events():
@@ -50,7 +79,8 @@ def run(grace, delay_ms, expected_exit):
 
         process = subprocess.Popen(
             ["./bin/small-chain", "-addr=127.0.0.1:0", "-workers=1",
-             "-shutdown-grace=" + grace], stdout=logs, stderr=logs)
+             "-shutdown-grace=" + grace,
+             "-retention-interval=-1s", "-retention-batch=0"], stdout=logs, stderr=logs)
         try:
             deadline = time.monotonic() + 5
             address = None
@@ -148,7 +178,8 @@ def run(grace, delay_ms, expected_exit):
 
 if __name__ == "__main__":
     check_cli_arguments()
+    check_retention_configuration()
     run("3s", 100, 0)
     run("20ms", 5000, 1)
-    print("PASS: CLI argument rejection/help, retry, checksum, replay/conflict, memory-only 501 contract, "
+    print("PASS: retention config, CLI argument rejection/help, retry, checksum, replay/conflict, memory-only 501 contract, "
           "cancel, timeout, SIGTERM drain and forced cancellation")

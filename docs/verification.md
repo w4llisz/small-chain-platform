@@ -935,3 +935,27 @@ file content again.
 - `git diff --check` passed. No SQL, frontend or durable scheduling code changed;
   local database/E2E tests were not run. New main CI provides the integration
   check for this commit; the parent's green result is not its result.
+
+## 2026-11-23 — M5.17 retention validation before connection
+
+- Fresh main `85a89b037528a29fdc8a2b8ad6d5cfee76b4e17a` had successful
+  CI `45013989212`. No open PR or repository AGENTS.md was found.
+- The old-binary regression failed: a negative cleanup interval with an empty
+  DSN reported `DATABASE_URL is required` instead of the configuration error.
+  Code review also found batch validation occurred only after opening the pool.
+- PostgreSQL API mode now validates cleanup settings before tracing and DSN
+  handling. The constructor and startup use one enabled-loop validator. Zero
+  interval still disables cleanup and ignores batch; memory mode ignores both.
+- Ten bounded process cases cover absent/malformed DSNs, negative interval,
+  batch 0/1001 rejection, accepted batch boundaries 1/1000, and disabled cleanup.
+  Both existing memory smoke runs now include otherwise-invalid retention
+  settings and still pass their HTTP/task/shutdown checks. Every new process
+  invocation has a three-second deadline and replaces inherited DATABASE_URL.
+- Go 1.27.3 `timeout 60s make verify` passed formatting/vet, then timed out at
+  race tests (exit 124). Separate bounded `make test` passed all race tests;
+  `make smoke` passed six static builds and the extended process tests. All
+  75 Python tests and `git diff --check` passed. These complete the equivalent
+  checks; the initial combined command did not pass.
+- Integration-tag compilation passed for postgres/dbworker/httpapi with
+  `-run '^$'`; no database tests ran locally. SQL and cleanup execution behavior
+  were unchanged. Real PostgreSQL/E2E validation remains the new main CI gate.

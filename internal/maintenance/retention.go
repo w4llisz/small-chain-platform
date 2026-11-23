@@ -31,13 +31,22 @@ func NewRetention(purger TerminalPurger, logger *slog.Logger, interval time.Dura
 	if logger == nil {
 		return nil, errors.New("retention logger is required")
 	}
-	if interval <= 0 {
-		return nil, errors.New("retention interval must be positive")
-	}
-	if batch < 1 || batch > maxBatch {
-		return nil, fmt.Errorf("retention batch must be between 1 and %d", maxBatch)
+	if err := ValidateRetentionConfig(interval, batch); err != nil {
+		return nil, err
 	}
 	return &Retention{purger: purger, logger: logger, interval: interval, batch: batch}, nil
+}
+
+// ValidateRetentionConfig checks an enabled cleanup loop without acquiring resources.
+// Callers that support disabling cleanup must handle that mode separately.
+func ValidateRetentionConfig(interval time.Duration, batch int) error {
+	if interval <= 0 {
+		return errors.New("retention interval must be positive")
+	}
+	if batch < 1 || batch > maxBatch {
+		return fmt.Errorf("retention batch must be between 1 and %d", maxBatch)
+	}
+	return nil
 }
 
 // Run blocks until ctx is canceled. Purge failures are observable but do not

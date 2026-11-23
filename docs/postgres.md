@@ -111,7 +111,12 @@ The migration backfills the counter from existing rows. If an upgrade already
 has more than 10,000 records, it sets the cap to that count instead of deleting
 data. PostgreSQL API mode calls the same bounded operation once at startup and
 then every `-retention-interval` (default one minute), with
-`-retention-batch=100` by default. A zero interval disables the loop. Calls are
+`-retention-batch=100` by default. The interval must be nonnegative; when it is
+positive, batch size must be 1–1000 inclusive. PostgreSQL mode validates these
+settings before tracing setup, DSN checks or database connection, so a database
+outage cannot mask an invalid cleanup configuration. A zero interval disables
+the loop and ignores the batch value. Memory mode ignores both cleanup settings.
+The constructor reuses the same enabled-loop validation. Calls are
 serial; failures are logged and retried on the next cadence without changing
 readiness. Shutdown cancels the loop before closing the connection pool.
 
