@@ -28,6 +28,17 @@ Wait-time histograms and admission-reason metrics remain planned. Optional
 admission and durable-attempt traces are available when both processes receive
 `-trace-endpoint`; they are disabled in the default Compose service set.
 
+## Startup argument diagnostics
+
+API and worker reject positional arguments with the fixed message
+`unexpected positional arguments: use named flags only`, exit with status 1,
+and do not echo the supplied values in this diagnostic. Use `-h` to inspect
+supported flags; pass database credentials through `DATABASE_URL`.
+This guarantee covers positional-argument rejection only. Flag parser errors,
+connection failures and other diagnostics are separate paths and are not
+covered by a general redaction guarantee. Avoid pasting secrets into arguments;
+process listings and shell history are outside application log handling.
+
 ## Optional traces
 
 Point the API and worker at a full OTLP/HTTP traces URL such as

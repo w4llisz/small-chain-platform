@@ -40,6 +40,29 @@ def check_cli_arguments():
         assert help_result.returncode == 0, help_result
 
 
+def check_startup_positional_privacy():
+    marker = "synthetic-private-value-DO-NOT-USE"
+    for binary, event in (
+        ("./bin/small-chain", "service.exit"),
+        ("./bin/small-chain-worker", "worker.exit"),
+    ):
+        for args in (
+            ["postgres://demo:" + marker + "@localhost/demo"],
+            ["--", "token=" + marker],
+            ["unexpected", "-trace-endpoint=http://localhost/" + marker],
+        ):
+            result = subprocess.run([binary, *args],
+                                    env=dict(os.environ, DATABASE_URL=""),
+                                    capture_output=True, text=True, timeout=3)
+            assert result.returncode == 1, (binary, result.returncode)
+            output = result.stdout + result.stderr
+            assert marker not in output, binary + " echoed positional input"
+            records = [json.loads(line) for line in result.stdout.splitlines()]
+            assert len(records) == 1 and records[0]["msg"] == event, records
+            assert records[0]["error"] == (
+                "unexpected positional arguments: use named flags only"), records
+
+
 def check_retention_configuration():
     # Invalid cleanup settings must win over both absent and malformed DSNs.
     for dsn in ("", "postgres://%invalid"):
@@ -178,6 +201,7 @@ def run(grace, delay_ms, expected_exit):
 
 if __name__ == "__main__":
     check_cli_arguments()
+    check_startup_positional_privacy()
     check_retention_configuration()
     run("3s", 100, 0)
     run("20ms", 5000, 1)

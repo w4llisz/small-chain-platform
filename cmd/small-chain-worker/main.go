@@ -49,7 +49,7 @@ func run(args []string, logger *slog.Logger) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("unexpected positional arguments: %v", flags.Args())
+		return errors.New("unexpected positional arguments: use named flags only")
 	}
 	if *owner == "" {
 		return errors.New("owner is required and must be unique per live process")

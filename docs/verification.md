@@ -959,3 +959,23 @@ file content again.
 - Integration-tag compilation passed for postgres/dbworker/httpapi with
   `-run '^$'`; no database tests ran locally. SQL and cleanup execution behavior
   were unchanged. Real PostgreSQL/E2E validation remains the new main CI gate.
+
+## 2026-11-24 — M5.18 positional diagnostic privacy
+
+- Fresh main `16854bcac50c975971f023d51670eeae35721aff` had successful
+  CI `45157201074`. No open PR or tracked AGENTS.md was found.
+- The new process regression failed against the old worker binary because its
+  positional-argument error echoed a synthetic credential marker. The API
+  already used a fixed message; the worker now uses that same message.
+- Six real-process cases cover both commands with a connection-string-like
+  argument, `--` leftovers, and a trace flag hidden after a positional word.
+  Each invocation has a three-second timeout and replaces DATABASE_URL. Tests
+  require exit 1, no marker in stdout/stderr, and the exact JSON exit event and
+  error. No real credential or database connection is used.
+- Go 1.27.3 `timeout 60s make verify` passed (exit 0): formatting, vet, race
+  tests, Python tests, all six static builds and process smoke, including the
+  new privacy cases. `git diff --check` passed.
+- No SQL or frontend behavior changed; PostgreSQL integration and browser E2E
+  were not run locally. The new commit's full CI remains the remote gate.
+- This fixes only positional-argument rejection. Flag parser and connection
+  diagnostics have not been certified free of supplied values.
