@@ -979,3 +979,25 @@ file content again.
   were not run locally. The new commit's full CI remains the remote gate.
 - This fixes only positional-argument rejection. Flag parser and connection
   diagnostics have not been certified free of supplied values.
+
+## 2026-11-25 — M5.19 flag parser diagnostic privacy
+
+- Fresh main `d32a78a40f5d5a9f4261e43fe1b54dadd36a7712` had successful
+  CI `45380364594`; no open PR or repository AGENTS.md was found.
+- The new real-binary regression failed against the original API: an invalid
+  integer value was echoed to output with the synthetic private marker.
+- API now uses a local ContinueOnError FlagSet. Both commands suppress parser
+  output and replace parse errors, avoiding both direct stderr and error-log
+  echo paths. Help is rendered after restoring output and still exits 0.
+  API parse failure now exits 1 instead of 2, documented in the runbook.
+- Eight process error cases cover integer/float values, unknown names, and a
+  missing value after a parsed sensitive-looking string. Four help cases cover
+  -h/-help after that string. Each invocation has a three-second deadline;
+  assertions check stdout/stderr, exit status and structured error events.
+- First make verify failed because the worker unit test expected the previous
+  raw unknown-flag message. Updated that expectation to the fixed contract.
+  The subsequent `timeout 60s make verify` passed: formatting, vet, race tests,
+  all 75 Python tests, six static builds and complete process smoke.
+- No SQL/frontend behavior changed. PostgreSQL integration and browser E2E
+  were not run locally; the new commit's CI provides those remote gates.
+  Connection and other post-parse errors remain outside this privacy guarantee.

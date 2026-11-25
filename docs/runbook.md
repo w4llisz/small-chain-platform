@@ -34,9 +34,13 @@ API and worker reject positional arguments with the fixed message
 `unexpected positional arguments: use named flags only`, exit with status 1,
 and do not echo the supplied values in this diagnostic. Use `-h` to inspect
 supported flags; pass database credentials through `DATABASE_URL`.
-This guarantee covers positional-argument rejection only. Flag parser errors,
-connection failures and other diagnostics are separate paths and are not
-covered by a general redaction guarantee. Avoid pasting secrets into arguments;
+Flag syntax/type errors also omit supplied names and values, returning
+`invalid command-line flags: use -h for usage` with status 1. This normalizes
+the API's former parser exit status 2 to its structured startup-failure status 1.
+Both `-h` and `-help` still print supported flags/defaults and exit 0, including
+after previously parsed values. Re-run with help to diagnose an invalid flag.
+These guarantees cover parsing and positional rejection only. Connection
+failures and other diagnostics are not covered by a general redaction guarantee. Avoid pasting secrets into arguments;
 process listings and shell history are outside application log handling.
 
 ## Optional traces

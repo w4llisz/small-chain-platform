@@ -23,7 +23,7 @@ def check_cli_arguments():
             (["unexpected"], "unexpected positional arguments"),
             (["unexpected", "-storage=postgres"], "unexpected positional arguments"),
             (["--", "unexpected"], "unexpected positional arguments"),
-            (["-unknown"], "flag provided but not defined"),
+            (["-unknown"], "invalid command-line flags"),
         ]
         if binary.endswith("/small-chain"):
             cases.append((["-storage=postgres", "unexpected"],
@@ -61,6 +61,34 @@ def check_startup_positional_privacy():
             assert len(records) == 1 and records[0]["msg"] == event, records
             assert records[0]["error"] == (
                 "unexpected positional arguments: use named flags only"), records
+
+
+def check_flag_privacy():
+    marker = "synthetic-private-value-DO-NOT-USE"
+    for binary, event, integer in (
+        ("./bin/small-chain", "service.exit", "workers"),
+        ("./bin/small-chain-worker", "worker.exit", "concurrency"),
+    ):
+        for args in (
+            ["-" + integer + "=" + marker],
+            ["-trace-sample-ratio=" + marker],
+            ["-unknown-" + marker],
+            ["-trace-endpoint=" + marker, "-" + integer],
+        ):
+            result = subprocess.run([binary, *args],
+                                    env=dict(os.environ, DATABASE_URL=""),
+                                    capture_output=True, text=True, timeout=3)
+            assert marker not in result.stdout + result.stderr, binary + " echoed flag input"
+            assert result.returncode == 1, (binary, result.returncode)
+            records = [json.loads(line) for line in result.stdout.splitlines()]
+            assert len(records) == 1 and records[0]["msg"] == event, records
+            assert records[0]["error"] == "invalid command-line flags: use -h for usage", records
+        for help_flag in ("-h", "-help"):
+            result = subprocess.run([binary, "-trace-endpoint=" + marker, help_flag],
+                                    capture_output=True, text=True, timeout=3)
+            assert result.returncode == 0, binary
+            assert marker not in result.stdout + result.stderr, binary
+            assert "Usage of " in result.stderr and "-trace-endpoint" in result.stderr, binary
 
 
 def check_retention_configuration():
@@ -200,6 +228,7 @@ def run(grace, delay_ms, expected_exit):
 
 
 if __name__ == "__main__":
+    check_flag_privacy()
     check_cli_arguments()
     check_startup_positional_privacy()
     check_retention_configuration()

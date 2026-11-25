@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -42,11 +43,16 @@ func run(args []string, logger *slog.Logger) error {
 	metricsAddr := flags.String("metrics-addr", "", "optional worker metrics listen address (for example 127.0.0.1:9091)")
 	traceEndpoint := flags.String("trace-endpoint", "", "optional OTLP/HTTP traces endpoint; empty disables tracing")
 	traceSampleRatio := flags.Float64("trace-sample-ratio", 1, "root trace sample ratio when tracing is enabled (0,1]")
-	if err := flags.Parse(args); err != nil {
+	// Parse errors can contain supplied names/values; do not print or wrap them.
+	flags.SetOutput(io.Discard)
+	err := flags.Parse(args)
+	flags.SetOutput(os.Stderr)
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
+			flags.Usage()
 			return nil
 		}
-		return err
+		return errors.New("invalid command-line flags: use -h for usage")
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected positional arguments: use named flags only")

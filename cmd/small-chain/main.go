@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,18 +30,29 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
-	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (local demo; no authentication)")
-	storage := flag.String("storage", "memory", "storage backend: memory or postgres")
-	workers := flag.Int("workers", 4, "concurrent worker slots")
-	queue := flag.Int("queue", 64, "pending queue capacity")
-	maxJobs := flag.Int("max-jobs", 10000, "maximum retained records and idempotency keys")
-	grace := flag.Duration("shutdown-grace", 10*time.Second, "total graceful shutdown budget")
-	retentionInterval := flag.Duration("retention-interval", time.Minute, "PostgreSQL terminal cleanup cadence; 0 disables cleanup")
-	retentionBatch := flag.Int("retention-batch", 100, "maximum terminal jobs deleted per cleanup sweep")
-	traceEndpoint := flag.String("trace-endpoint", "", "optional OTLP/HTTP traces endpoint; empty disables tracing")
-	traceSampleRatio := flag.Float64("trace-sample-ratio", 1, "root trace sample ratio when tracing is enabled (0,1]")
-	flag.Parse()
-	if flag.NArg() != 0 {
+	flags := flag.NewFlagSet("small-chain", flag.ContinueOnError)
+	addr := flags.String("addr", "127.0.0.1:8080", "HTTP listen address (local demo; no authentication)")
+	storage := flags.String("storage", "memory", "storage backend: memory or postgres")
+	workers := flags.Int("workers", 4, "concurrent worker slots")
+	queue := flags.Int("queue", 64, "pending queue capacity")
+	maxJobs := flags.Int("max-jobs", 10000, "maximum retained records and idempotency keys")
+	grace := flags.Duration("shutdown-grace", 10*time.Second, "total graceful shutdown budget")
+	retentionInterval := flags.Duration("retention-interval", time.Minute, "PostgreSQL terminal cleanup cadence; 0 disables cleanup")
+	retentionBatch := flags.Int("retention-batch", 100, "maximum terminal jobs deleted per cleanup sweep")
+	traceEndpoint := flags.String("trace-endpoint", "", "optional OTLP/HTTP traces endpoint; empty disables tracing")
+	traceSampleRatio := flags.Float64("trace-sample-ratio", 1, "root trace sample ratio when tracing is enabled (0,1]")
+	// Parse errors can contain supplied names/values; do not print or wrap them.
+	flags.SetOutput(io.Discard)
+	err := flags.Parse(os.Args[1:])
+	flags.SetOutput(os.Stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		flags.Usage()
+		return nil
+	}
+	if err != nil {
+		return errors.New("invalid command-line flags: use -h for usage")
+	}
+	if flags.NArg() != 0 {
 		return errors.New("unexpected positional arguments: use named flags only")
 	}
 	if *grace <= 0 {
