@@ -43,6 +43,18 @@ These guarantees cover parsing and positional rejection only. Connection
 failures and other diagnostics are not covered by a general redaction guarantee. Avoid pasting secrets into arguments;
 process listings and shell history are outside application log handling.
 
+## PostgreSQL startup connection failures
+
+The initial connection check returns
+`connect to PostgreSQL failed: check connectivity and credentials` without
+the pgx user/database/host details. Check DATABASE_URL, server availability,
+socket/host/port, TLS and credentials locally; do not paste credentials into
+logs. This deliberately trades driver-level startup detail for a stable hint.
+Canceled and expired connection contexts retain their Go error identities.
+This covers the initial Ping in Open only, not runtime queries, readiness
+checks, migration commands, pool construction or tracing errors.
+
+
 ## Optional traces
 
 Point the API and worker at a full OTLP/HTTP traces URL such as

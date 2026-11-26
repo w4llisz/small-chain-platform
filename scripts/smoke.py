@@ -91,6 +91,25 @@ def check_flag_privacy():
             assert "Usage of " in result.stderr and "-trace-endpoint" in result.stderr, binary
 
 
+def check_database_startup_privacy():
+    marker = "synthetic_private_value"
+    with tempfile.TemporaryDirectory() as directory:
+        # No server/socket exists here; no real database or network is used.
+        dsn = f"host={directory} user={marker} dbname={marker} password={marker} sslmode=disable"
+        for binary, args, event in (
+            ("./bin/small-chain", ["-storage=postgres"], "service.exit"),
+            ("./bin/small-chain-worker", ["-owner=privacy-test"], "worker.exit"),
+        ):
+            result = subprocess.run([binary, *args],
+                                    env=dict(os.environ, DATABASE_URL=dsn),
+                                    capture_output=True, text=True, timeout=3)
+            assert result.returncode == 1, binary
+            assert marker not in result.stdout + result.stderr, binary
+            records = [json.loads(line) for line in result.stdout.splitlines()]
+            assert len(records) == 1 and records[0]["msg"] == event, records
+            assert records[0]["error"] == "connect to PostgreSQL failed: check connectivity and credentials", records
+
+
 def check_retention_configuration():
     # Invalid cleanup settings must win over both absent and malformed DSNs.
     for dsn in ("", "postgres://%invalid"):
@@ -228,6 +247,7 @@ def run(grace, delay_ms, expected_exit):
 
 
 if __name__ == "__main__":
+    check_database_startup_privacy()
     check_flag_privacy()
     check_cli_arguments()
     check_startup_positional_privacy()

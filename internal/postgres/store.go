@@ -45,7 +45,15 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("ping PostgreSQL: %w", err)
+		// pgx connection errors include configured user/database/host values.
+		// Preserve cancellation identity without retaining the raw error chain.
+		if errors.Is(err, context.Canceled) {
+			return nil, fmt.Errorf("connect to PostgreSQL: %w", context.Canceled)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("connect to PostgreSQL: %w", context.DeadlineExceeded)
+		}
+		return nil, errors.New("connect to PostgreSQL failed: check connectivity and credentials")
 	}
 	return &Store{pool: pool}, nil
 }

@@ -1001,3 +1001,25 @@ file content again.
 - No SQL/frontend behavior changed. PostgreSQL integration and browser E2E
   were not run locally; the new commit's CI provides those remote gates.
   Connection and other post-parse errors remain outside this privacy guarantee.
+
+## 2026-11-26 — M5.20 PostgreSQL startup connection diagnostics
+
+- Fresh main `cdcad64b90c8b5808650b0dfa723fb3df0a1576c` passed CI
+  `45616580783`. Open dependency PR #8 (setup-go) also had successful CI;
+  it is outside this runtime fix. No repository AGENTS.md was found.
+- A new package regression failed on the old Open implementation: pgx's
+  connection error echoed a synthetic user/database marker. A nonexistent
+  Unix socket in a private temporary directory avoids real databases/network.
+- Only the initial Ping failure is sanitized. Pool cleanup is unchanged;
+  cancellation/deadline errors preserve errors.Is identity using safe sentinels,
+  while ordinary failures return a fixed connectivity/credentials hint.
+- Package tests cover connection failure and both context identities. Two
+  three-second process regressions exercise API/worker startup, checking exit 1,
+  exact structured error events and absence of the marker in stdout/stderr.
+- `timeout 60s make verify` passed: formatting, vet, race tests, 75 Python tests,
+  six static builds and complete process smoke. `git diff --check` passed.
+- Integration-tag compilation of postgres/dbworker/httpapi passed with
+  `-run '^$'` (no database tests ran). SQL, schema and scheduling are unchanged;
+  real PostgreSQL and E2E remain the new commit's remote CI gates.
+- Runtime queries/readiness, pool construction, migration and tracing errors
+  remain outside this scoped privacy claim. No real credentials were used.
