@@ -1023,3 +1023,25 @@ file content again.
   real PostgreSQL and E2E remain the new commit's remote CI gates.
 - Runtime queries/readiness, pool construction, migration and tracing errors
   remain outside this scoped privacy claim. No real credentials were used.
+
+## 2026-11-27 — M5.21 tracing endpoint prevalidation
+
+- Fresh main `0a6faf96efad67ea3e4fb1d8f79b4b88302ec1af` passed CI
+  `45805805587`. Dependency PR #8 remains open with successful CI `45616726418`;
+  no repository AGENTS.md was found.
+- Before the fix, a malformed synthetic URL was printed by the SDK to stderr
+  and New still returned a provider. The regression failed on that acceptance.
+  Inspection of pinned otlptracehttp v1.47.0 WithEndpointURL confirmed it logs
+  url.Parse failures and retains its previous endpoint configuration.
+- Validate the supplied endpoint before invoking the SDK: HTTP(S), absolute,
+  nonempty hostname, valid URL syntax; return a fixed diagnostic on failure.
+  Empty endpoints retain the existing no-op path. No export limits changed.
+- Five invalid and three valid construction cases plus the existing disabled
+  test pass. Eight real API/worker process cases check exit 1, exact JSON exit
+  errors and no synthetic marker in stdout/stderr, each with a 3-second limit.
+  No spans are created in the construction tests and no collector is contacted.
+- `timeout 60s make verify` passed: formatting, vet, race tests, all 75 Python
+  tests, six static builds and full process smoke. `git diff --check` passed.
+- Real PostgreSQL, browser E2E and Collector integration were not run locally;
+  the new CI remains their gate. URL acceptance is not a connectivity test or
+  a general redaction guarantee for environment settings/runtime export errors.

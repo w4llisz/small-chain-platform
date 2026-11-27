@@ -57,6 +57,13 @@ checks, migration commands, pool construction or tracing errors.
 
 ## Optional traces
 
+Nonempty trace endpoints must be absolute HTTP(S) URLs with a hostname.
+Malformed input fails before exporter creation with the fixed error
+`trace endpoint must be an absolute HTTP(S) URL with a host`; input values are
+not echoed through the SDK's URL parser. An empty endpoint still disables
+tracing. This check does not verify collector connectivity or sanitize runtime
+export errors and other SDK environment configuration.
+
 Point the API and worker at a full OTLP/HTTP traces URL such as
 `http://127.0.0.1:4318/v1/traces`, and choose a root sampling ratio in `(0,1]`.
 The API accepts W3C `traceparent` but intentionally ignores baggage. Search the

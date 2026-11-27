@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -53,6 +54,12 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	}
 	if cfg.SampleRatio <= 0 || cfg.SampleRatio > 1 {
 		return nil, errors.New("trace sample ratio must be greater than 0 and at most 1")
+	}
+	// Validate before WithEndpointURL: the SDK logs malformed input and keeps
+	// its previous endpoint instead of returning the parse failure.
+	endpoint, err := url.Parse(cfg.Endpoint)
+	if err != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Hostname() == "" {
+		return nil, errors.New("trace endpoint must be an absolute HTTP(S) URL with a host")
 	}
 	exporter, err := otlptracehttp.New(ctx,
 		otlptracehttp.WithEndpointURL(cfg.Endpoint),
