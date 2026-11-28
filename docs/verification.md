@@ -1045,3 +1045,25 @@ file content again.
 - Real PostgreSQL, browser E2E and Collector integration were not run locally;
   the new CI remains their gate. URL acceptance is not a connectivity test or
   a general redaction guarantee for environment settings/runtime export errors.
+
+## 2026-11-28 — M5.22 setup-go v7.1.0 integration
+
+- Fresh main `957f9f2e267b49d3a001f2a04c84d2273d6ee8ad` passed CI
+  `45984482309`. No repository AGENTS.md was found.
+- PR #8 at `57f4a9a8fc20f7f4d4e191f1f14c4a6b85f5788a` changes five
+  setup-go pins only. Upstream v7.1.0 tag resolves to the exact new commit;
+  inspected action.yml still supports canonical version-file/cache inputs.
+  Review scope and source links are in dependencies/setup-go-v7.1.0.md.
+- PR run `45616726418` passed verify, postgres, web and e2e. Seven main-only
+  jobs were skipped; these require the resulting merge's own CI.
+- Merged without conflicts, retaining the original Dependabot commit as a
+  second parent. Exact text comparison verified only five pin/comment changes
+  in the workflow. .go-version, Dockerfile, go.mod and go.sum are unchanged.
+- `timeout 60s make verify` passed formatting/vet but timed out during race
+  tests after dependency downloads (exit 124). Bounded split checks then
+  passed: make test (all race tests), make test-scripts smoke (75 Python tests,
+  six static builds and full process smoke). These complete equivalent checks;
+  the initial combined command did not pass. git diff --check passed.
+- No local GitHub Actions execution, real database integration or browser E2E
+  was attempted for this workflow-only update. PR evidence is historical;
+  merged-main action execution and main-only gates remain pending CI.
